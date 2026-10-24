@@ -508,6 +508,32 @@ tr.stage-sel td{ background: #EDF4F3 !important; }
 /* ---------- AutoSave ---------- */
 #autoSaveStatus{ color: var(--green); font-weight:600; }
 #autoSaveStatus.warn{ color: var(--amber); }
+
+/* ---------- Προβλέψεις ημερομηνιών ---------- */
+.forecast-panel{ background:var(--card); border:1px solid var(--line); border-radius:var(--radius-m); box-shadow:var(--shadow-card); margin:0 0 16px; }
+.forecast-panel > summary{ cursor:pointer; padding:11px 16px; font-weight:700; font-size:14px; color:var(--teal); display:flex; align-items:center; gap:10px; list-style:none; }
+.forecast-panel > summary::-webkit-details-marker{ display:none; }
+.forecast-panel > summary .fc-hint{ font-weight:500; font-size:12px; color:var(--ink-faint); }
+.forecast-panel > summary .fc-count{ margin-left:auto; font-family:var(--mono); font-size:12px; color:var(--ink-soft); }
+.forecast-body{ border-top:1px solid var(--line); overflow-x:auto; }
+.forecast-table{ width:100%; border-collapse:collapse; font-size:13px; }
+.forecast-table th{ text-align:left; font-size:11px; text-transform:uppercase; letter-spacing:.5px; color:var(--ink-faint); padding:8px 14px; background:var(--paper-2); }
+.forecast-table td{ padding:8px 14px; border-top:1px solid var(--line); vertical-align:top; }
+.forecast-table .fc-sub{ font-size:11.5px; color:var(--ink-faint); }
+.forecast-table .fc-late{ color:var(--red); }
+.forecast-note{ padding:8px 14px; font-size:11.5px; color:var(--ink-faint); border-top:1px solid var(--line); }
+.conf-pill{ display:inline-block; font-size:11px; font-weight:700; padding:2px 8px; border-radius:999px; }
+.conf-high{ background:var(--green-soft); color:var(--green); }
+.conf-medium{ background:var(--amber-soft); color:var(--amber); }
+.conf-low{ background:var(--red-soft); color:var(--red); }
+.suggest-box{ border:1px solid var(--line-strong); background:var(--paper-2); border-radius:var(--radius-m); padding:10px 12px; font-size:13px; margin-bottom:12px; }
+.suggest-box[hidden]{ display:none; }
+.suggest-box .sg-head{ display:flex; justify-content:space-between; align-items:center; margin-bottom:6px; font-weight:700; color:var(--teal); }
+.suggest-box .sg-row{ display:flex; justify-content:space-between; align-items:center; gap:10px; padding:3px 0; }
+.suggest-box .sg-foot{ font-size:11.5px; color:var(--ink-faint); margin-top:6px; }
+.suggest-box .sg-warn{ font-size:11.5px; color:var(--amber); margin-top:4px; }
+.due-guess{ display:block; font-size:11.5px; color:var(--ink-faint); font-style:italic; }
+.issue-sub{ display:block; font-size:11px; color:var(--ink-faint); }
 </style>
 </head>
 <body>
@@ -552,6 +578,10 @@ tr.stage-sel td{ background: #EDF4F3 !important; }
 
   <main class="main">
     <div class="stats-row" id="statsRow"></div>
+    <details class="forecast-panel" id="forecastPanel">
+      <summary>📈 Προβλέψεις επόμενων λογαριασμών <span class="fc-hint">(από το ιστορικό σας)</span><span class="fc-count" id="forecastCount"></span></summary>
+      <div class="forecast-body" id="forecastBody"></div>
+    </details>
     <div class="filters">
       <input type="search" id="searchInput" placeholder="🔍 Αναζήτηση (κατηγορία, οικία, σημειώσεις…)">
       <select id="filterYear"><option value="all">Όλα τα έτη</option></select>
@@ -797,6 +827,165 @@ https://github.com/nodeca/pako/blob/main/LICENSE
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<script>
+/* ============================================================
+   PREDICTOR — πιθανές ημερομηνίες έκδοσης/λήξης από το ιστορικό
+   Ομαδοποίηση ανά Οικία + Κατηγορία. Καθαρή λογική (χωρίς DOM).
+   Περίοδος λογαριασμού = year/month του αρχείου (π.χ. "2026 03 ΔΕΗ").
+   ============================================================ */
+window.Predictor = (function(){
+  const DEFAULT_GAP_DAYS = 20; // παραδοχή όταν δεν υπάρχει καταχωρημένο διάστημα έκδοσης→λήξης
+  const pad = n => String(n).padStart(2,'0');
+  const normText = s => String(s==null?'':s).normalize('NFD').replace(/[̀-ͯ]/g,'').toUpperCase().replace(/\s+/g,' ').trim();
+
+  function parseISO(s){
+    if(!s) return null;
+    const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(s);
+    return m ? new Date(+m[1], +m[2]-1, +m[3]) : null;
+  }
+  const toISO = d => `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
+  const fmt = d => `${pad(d.getDate())}/${pad(d.getMonth()+1)}/${d.getFullYear()}`;
+  const daysBetween = (a,b) => Math.round((Date.UTC(b.getFullYear(),b.getMonth(),b.getDate()) - Date.UTC(a.getFullYear(),a.getMonth(),a.getDate()))/86400000);
+  const addDays = (d,n) => new Date(d.getFullYear(), d.getMonth(), d.getDate()+n);
+  const monthAbs = d => d.getFullYear()*12 + d.getMonth();
+  function fromMonthAbs(abs, day){
+    const y = Math.floor(abs/12), m = abs - y*12;
+    return new Date(y, m, Math.min(day, new Date(y, m+1, 0).getDate()));
+  }
+  function median(a){
+    if(!a.length) return null;
+    const s=[...a].sort((x,y)=>x-y), k=Math.floor(s.length/2);
+    return s.length%2 ? s[k] : (s[k-1]+s[k])/2;
+  }
+  function stdev(a){
+    if(a.length<2) return 0;
+    const m=a.reduce((x,y)=>x+y,0)/a.length;
+    return Math.sqrt(a.reduce((x,y)=>x+(y-m)**2,0)/a.length);
+  }
+  function periodAbs(b){
+    const y = parseInt(b.year,10), m = parseInt(b.month,10);
+    return (Number.isFinite(y) && m>=1 && m<=12) ? y*12 + (m-1) : null;
+  }
+  const periodLabel = abs => ({ year: Math.floor(abs/12), month: (abs%12)+1 });
+  const keyOf = b => String(b.houseId||'') + '||' + normText(b.category);
+
+  function groupStats(items){
+    const issues = items.map(b=>parseISO(b.issueDate)).filter(Boolean).sort((a,b)=>a-b);
+    const dues   = items.map(b=>parseISO(b.dueDate)).filter(Boolean).sort((a,b)=>a-b);
+    const gaps=[], issueOff=[], dueOff=[], periodSet=new Set();
+    items.forEach(b=>{
+      const i=parseISO(b.issueDate), d=parseISO(b.dueDate), p=periodAbs(b);
+      if(i && d){ const g=daysBetween(i,d); if(g>=0 && g<=120) gaps.push(g); }
+      if(p!=null){
+        periodSet.add(p);
+        if(i) issueOff.push(monthAbs(i)-p);
+        if(d) dueOff.push(monthAbs(d)-p);
+      }
+    });
+    const periods=[...periodSet].sort((a,b)=>a-b);
+    const issueDays=issues.map(d=>d.getDate()), dueDays=dues.map(d=>d.getDate());
+    let interval=null;
+    if(periods.length>=2){
+      const diffs=[]; for(let i=1;i<periods.length;i++) diffs.push(periods[i]-periods[i-1]);
+      interval=Math.max(1, Math.round(median(diffs)));
+    }
+    const spreads=[issueDays,dueDays,gaps].filter(a=>a.length>=2).map(stdev);
+    return {
+      n: items.length, issues, dues, gaps, periods, issueOff, dueOff, interval,
+      issueDay: issueDays.length ? Math.round(median(issueDays)) : null,
+      dueDay:   dueDays.length   ? Math.round(median(dueDays))   : null,
+      gap:      gaps.length      ? Math.round(median(gaps))      : null,
+      spread:   spreads.length   ? Math.max(...spreads) : 0,
+      nEff: Math.max(issues.length, dues.length)
+    };
+  }
+
+  function confidenceOf(st, assumed){
+    if(assumed) return 'low';
+    if(st.nEff>=4 && st.spread<=2.5) return 'high';
+    if(st.nEff>=2 && st.spread<=6)   return 'medium';
+    return 'low';
+  }
+
+  // Συμπληρώνει την ημερομηνία που λείπει με το τυπικό διάστημα έκδοσης→λήξης
+  function complete(issue, due, st){
+    let assumed=false;
+    const gap = st.gap!=null ? st.gap : DEFAULT_GAP_DAYS;
+    if(!issue && due){ issue=addDays(due,-gap); assumed = st.gap==null; }
+    else if(issue && !due){ due=addDays(issue,gap); assumed = st.gap==null; }
+    return {issue, due, assumed};
+  }
+
+  function predictForPeriod(st, p){
+    let issue=null, due=null;
+    if(st.issueOff.length && st.issueDay!=null) issue = fromMonthAbs(p + Math.round(median(st.issueOff)), st.issueDay);
+    if(issue && st.gap!=null) due = addDays(issue, st.gap);
+    else if(st.dueOff.length && st.dueDay!=null) due = fromMonthAbs(p + Math.round(median(st.dueOff)), st.dueDay);
+    return complete(issue, due, st);
+  }
+
+  function predictNext(st){
+    if(!st.periods.length) return {issue:null, due:null, assumed:false, nextPeriod:null};
+    const nextP = st.periods[st.periods.length-1] + (st.interval||1);
+    const r = predictForPeriod(st, nextP);
+    r.nextPeriod = nextP;
+    return r;
+  }
+
+  // Πρόβλεψη επόμενου λογαριασμού για κάθε ζεύγος Οικία + Κατηγορία
+  function forecast(bills){
+    const groups = new Map();
+    bills.forEach(b=>{
+      if(!b.category || periodAbs(b)==null) return;
+      const k=keyOf(b);
+      if(!groups.has(k)) groups.set(k,[]);
+      groups.get(k).push(b);
+    });
+    const out=[];
+    groups.forEach(items=>{
+      const st=groupStats(items);
+      if(st.n<2 && !st.dues.length) return;
+      const r=predictNext(st);
+      if(!r.issue && !r.due) return;
+      const last = items.slice().sort((a,b)=>periodAbs(a)-periodAbs(b)).pop();
+      out.push({
+        houseId: items[0].houseId, category: items[0].category, n: st.n, interval: st.interval,
+        issue: r.issue, due: r.due, assumed: r.assumed, confidence: confidenceOf(st, r.assumed),
+        nextPeriod: periodLabel(r.nextPeriod),
+        lastAmount: (last && typeof last.amount==='number') ? last.amount : null
+      });
+    });
+    out.sort((a,b)=>(a.due||a.issue)-(b.due||b.issue));
+    return out;
+  }
+
+  // Προτάσεις για μία φόρμα: ctx={houseId, category, year, month, issueDate, dueDate, excludeId}
+  function suggest(bills, ctx){
+    if(!ctx.category || !String(ctx.category).trim()) return null;
+    const k = String(ctx.houseId||'') + '||' + normText(ctx.category);
+    const items = bills.filter(b=>b.id!==ctx.excludeId && keyOf(b)===k);
+    if(!items.length) return null;
+    const st = groupStats(items);
+    const p = periodAbs(ctx);
+    const base = (p!=null && st.periods.length) ? predictForPeriod(st,p) : predictNext(st);
+    const kI=parseISO(ctx.issueDate), kD=parseISO(ctx.dueDate);
+    let issue=base.issue, due=base.due, assumed=base.assumed;
+    if(kI && !kD){
+      if(st.gap!=null){ due=addDays(kI,st.gap); assumed=false; }
+      else if(!st.dues.length){ due=addDays(kI,DEFAULT_GAP_DAYS); assumed=true; }
+    } else if(kD && !kI){
+      if(st.gap!=null){ issue=addDays(kD,-st.gap); assumed=false; }
+      else if(!st.issues.length){ issue=addDays(kD,-DEFAULT_GAP_DAYS); assumed=true; }
+    }
+    return {
+      issue: kI?null:issue, due: kD?null:due, n: st.n, interval: st.interval,
+      assumed, confidence: confidenceOf(st, assumed)
+    };
+  }
+
+  return { forecast, suggest, parseISO, toISO, fmt, DEFAULT_GAP_DAYS };
+})();
+</script>
 <script>/* ============================================================
    00. FIREBASE CONFIG — ΣΥΜΠΛΗΡΩΣΕ ΤΑ ΔΙΚΑ ΣΟΥ ΣΤΟΙΧΕΙΑ ΕΔΩ
    Firebase Console -> Project settings -> General -> Your apps -> SDK setup
@@ -2340,7 +2529,7 @@ function renderRowHtml(bill){
     <td><span class="tag-house">${escapeHtml(houseName(bill.houseId))}</span></td>
     <td class="tag-cat">${escapeHtml(bill.category)}</td>
     <td>${amt}</td>
-    <td>${bill.dueDate ? formatDateGR(bill.dueDate) : '<span class="muted">—</span>'}</td>
+    <td>${rowDueCellHtml(bill)}</td>
     <td><span class="status-badge ${st.code}">${st.label}</span></td>
     <td><div class="file-icons">${fileChipsHtml(bill)}</div></td>
     <td>
@@ -2464,10 +2653,108 @@ async function deleteBill(id){
   SEL.trashTimer = setTimeout(()=>{ SEL.trash=[]; el.remove(); }, 8000);
 }
 
+/* ---------- Προβλέψεις ημερομηνιών (UI) ---------- */
+const CONF_LABEL = { high:'υψηλή', medium:'μέτρια', low:'χαμηλή' };
+
+function rowDueCellHtml(bill){
+  const issueSub = bill.issueDate ? `<span class="issue-sub">έκδ. ${formatDateGR(bill.issueDate)}</span>` : '';
+  if(bill.dueDate) return formatDateGR(bill.dueDate) + issueSub;
+  try{
+    const sg = Predictor.suggest(STATE.bills, {
+      houseId: bill.houseId, category: bill.category, year: bill.year, month: bill.month,
+      issueDate: bill.issueDate||'', dueDate: '', excludeId: bill.id
+    });
+    if(sg && sg.due){
+      return `<span class="muted">—</span><span class="due-guess" title="Πιθανή λήξη (εμπιστοσύνη: ${CONF_LABEL[sg.confidence]})">≈ ${Predictor.fmt(sg.due)}</span>${issueSub}`;
+    }
+  }catch(e){ console.warn('Due-date guess failed', e); }
+  return '<span class="muted">—</span>' + issueSub;
+}
+
+function renderForecast(){
+  const body = document.getElementById('forecastBody');
+  const cnt  = document.getElementById('forecastCount');
+  if(!body) return;
+  let list = [];
+  try{
+    list = Predictor.forecast(STATE.bills);
+  }catch(e){
+    console.error('Forecast failed', e);
+    body.innerHTML = '<div class="forecast-note">Σφάλμα υπολογισμού προβλέψεων — δείτε την κονσόλα (F12).</div>';
+    return;
+  }
+  if(STATE.filters.house !== 'all') list = list.filter(f=>f.houseId === STATE.filters.house);
+  cnt.textContent = list.length ? list.length + ' προβλέψεις' : '';
+  if(!list.length){
+    body.innerHTML = '<div class="forecast-note" style="border-top:none;text-align:center;padding:18px;">Δεν υπάρχει αρκετό ιστορικό για προβλέψεις (χρειάζονται τουλάχιστον 2 λογαριασμοί της ίδιας κατηγορίας με ημερομηνία λήξης).</div>';
+    return;
+  }
+  const today = todayISO();
+  body.innerHTML = `
+    <table class="forecast-table">
+      <thead><tr><th>Οικία / Κατηγορία</th><th>Επόμενη περίοδος</th><th>Πιθανή έκδοση</th><th>Πιθανή λήξη</th><th>Συχνότητα</th><th>Τελευταίο ποσό</th><th>Εμπιστοσύνη</th></tr></thead>
+      <tbody>${list.map(f=>{
+        const dueISO = f.due ? Predictor.toISO(f.due) : null;
+        const late = dueISO && dueISO < today;
+        return `<tr>
+          <td><b>${escapeHtml(houseName(f.houseId))}</b><div class="fc-sub">${escapeHtml(f.category)} · ${f.n} λογαριασμοί</div></td>
+          <td>${monthName(f.nextPeriod.month)} ${f.nextPeriod.year}</td>
+          <td>${f.issue ? Predictor.fmt(f.issue) + (f.assumed ? ' <span title="Παραδοχή '+Predictor.DEFAULT_GAP_DAYS+' ημερών πριν τη λήξη" style="color:var(--amber);">?</span>' : '') : '—'}</td>
+          <td class="${late?'fc-late':''}">${f.due ? Predictor.fmt(f.due) : '—'}${late ? '<div class="fc-sub fc-late">αναμενόταν — δεν έχει εισαχθεί</div>' : ''}</td>
+          <td>${f.interval ? 'κάθε '+f.interval+(f.interval===1?' μήνα':' μήνες') : '—'}</td>
+          <td>${f.lastAmount!==null ? formatMoney(f.lastAmount) : '—'}</td>
+          <td><span class="conf-pill conf-${f.confidence}">${CONF_LABEL[f.confidence]}</span></td>
+        </tr>`;
+      }).join('')}</tbody>
+    </table>
+    <div class="forecast-note">Οι προβλέψεις βελτιώνονται όσο περισσότερες ημερομηνίες έκδοσης και λήξης καταχωρούνται. Το «?» σημαίνει παραδοχή ${Predictor.DEFAULT_GAP_DAYS} ημερών μεταξύ έκδοσης και λήξης (δεν υπάρχουν ακόμα ημερομηνίες έκδοσης στο ιστορικό).</div>`;
+}
+
+function wireDateSuggestions(billId){
+  ['f_house','f_year','f_month','f_category','f_issueDate','f_dueDate'].forEach(id=>{
+    const el = document.getElementById(id);
+    if(!el) return;
+    el.addEventListener('input', ()=>updateDateSuggestions(billId));
+    el.addEventListener('change', ()=>updateDateSuggestions(billId));
+  });
+  updateDateSuggestions(billId);
+}
+
+function updateDateSuggestions(billId){
+  const box = document.getElementById('dateSuggestBox');
+  if(!box) return;
+  const val = id => { const el=document.getElementById(id); return el ? el.value : ''; };
+  const ctx = {
+    houseId: val('f_house'), category: val('f_category'),
+    year: val('f_year'), month: val('f_month'),
+    issueDate: val('f_issueDate'), dueDate: val('f_dueDate'), excludeId: billId
+  };
+  let sg = null;
+  try{ sg = Predictor.suggest(STATE.bills, ctx); }catch(e){ console.warn('Suggest failed', e); }
+  if(!sg || (!sg.issue && !sg.due)){ box.setAttribute('hidden',''); box.innerHTML=''; return; }
+  const row = (label, inputId, d) => `<div class="sg-row"><span>${label}: <b>${Predictor.fmt(d)}</b></span>
+      <button type="button" class="btn btn-sm" data-apply="${inputId}" data-date="${Predictor.toISO(d)}">Εφαρμογή</button></div>`;
+  const rows = (sg.issue ? row('Πιθανή έκδοση','f_issueDate',sg.issue) : '') + (sg.due ? row('Πιθανή λήξη','f_dueDate',sg.due) : '');
+  const every = sg.interval ? ` · κάθε ${sg.interval} ${sg.interval===1?'μήνα':'μήνες'}` : '';
+  box.innerHTML = `
+    <div class="sg-head"><span>💡 Προτάσεις από το ιστορικό</span><span class="conf-pill conf-${sg.confidence}">εμπιστοσύνη: ${CONF_LABEL[sg.confidence]}</span></div>
+    ${rows}
+    <div class="sg-foot">Βάσει ${sg.n} προηγούμενων λογαριασμών της ίδιας οικίας και κατηγορίας${every}</div>
+    ${sg.assumed ? `<div class="sg-warn">Δεν υπάρχει καταχωρημένο διάστημα έκδοσης→λήξης· χρησιμοποιήθηκε παραδοχή ${Predictor.DEFAULT_GAP_DAYS} ημερών.</div>` : ''}`;
+  box.removeAttribute('hidden');
+  box.querySelectorAll('[data-apply]').forEach(btn=>{
+    btn.onclick = ()=>{
+      document.getElementById(btn.dataset.apply).value = btn.dataset.date;
+      updateDateSuggestions(billId);
+    };
+  });
+}
+
 function renderAll(){
   renderTopbarStats();
   renderStatCards();
   renderFilterOptions();
+  renderForecast();
   renderGroups();
   updateBulkBar();
 }
@@ -2532,10 +2819,17 @@ function openBillModal(id, opts={}){
         <input type="date" id="f_paidDate" value="${bill.paidDate||''}">
       </div>
     </div>
-    <div class="field">
-      <label>Ημ/νία λήξης λογαριασμού <span class="muted small">(προαιρετική για εξοφληθέντες)</span></label>
-      <input type="date" id="f_dueDate" value="${bill.dueDate||''}">
+    <div class="field-row">
+      <div class="field">
+        <label>Ημ/νία έκδοσης <span class="muted small">(προαιρετική)</span></label>
+        <input type="date" id="f_issueDate" value="${bill.issueDate||''}">
+      </div>
+      <div class="field">
+        <label>Ημ/νία λήξης <span class="muted small">(προαιρετική για εξοφληθέντες)</span></label>
+        <input type="date" id="f_dueDate" value="${bill.dueDate||''}">
+      </div>
     </div>
+    <div class="suggest-box" id="dateSuggestBox" hidden></div>
     <div class="field">
       <label>Κατάσταση</label>
       <div class="choice-row" id="statusChoices">
@@ -2588,6 +2882,8 @@ function openBillModal(id, opts={}){
     </div>
     <input type="file" id="uploadFileInput" accept="application/pdf">
   `;
+
+  wireDateSuggestions(bill.id);
 
   /* status toggle */
   document.querySelectorAll('#statusChoices .choice').forEach(ch=>{
@@ -2719,6 +3015,7 @@ async function saveBillModal(){
   const amtVal  = document.getElementById('f_amount').value;
   bill.amount   = amtVal===''?null:parseFloat(amtVal);
   bill.dueDate  = document.getElementById('f_dueDate').value||null;
+  bill.issueDate= document.getElementById('f_issueDate').value||null;
   bill.paidDate = document.getElementById('f_paidDate').value||null;
   const selStatus = document.querySelector('#statusChoices .choice.active');
   bill.status   = selStatus?selStatus.dataset.st:bill.status;
