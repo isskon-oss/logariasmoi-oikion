@@ -1967,37 +1967,67 @@ function extractDueDate(rawText, billYear, billMonth){
    Διαβάζεται ΜΟΝΟ όταν υπάρχει ρητή ετικέτα (π.χ. «Ημ/νία Έκδοσης 15/09/2026»).
    Δεν γίνεται εικασία: αν δεν βρεθεί ετικέτα ή η ημερομηνία δεν είναι εύλογη,
    επιστρέφεται null και το πεδίο μένει κενό (οι προτάσεις του ιστορικού παραμένουν).
+   Ανθεκτικό σε: τόνους/κεφαλαία, µ (U+00B5) αντί μ, αόρατους χαρακτήρες, κενά ανάμεσα
+   στα γράμματα, ημερομηνία ΠΡΙΝ ή ΜΕΤΑ την ετικέτα.
    Έλεγχοι εγκυρότητας: υπαρκτή ημερομηνία, έκδοση ≤ λήξη (και έως 150 ημέρες πριν),
    και εντός εύλογου εύρους γύρω από την περίοδο (έτος/μήνας) του λογαριασμού.
 */
-function extractIssueDate(rawText, billYear, billMonth, dueISO){
-  const text = String(rawText||'').replace(/ /g,' ')
-    .normalize('NFD').replace(/[̀-ͯ]/g,'')   // χωρίς τόνους
-    .toUpperCase().replace(/\s+/g,' ');                // ς→Σ, ομοιόμορφα κενά
-  const labels = [
-    /ΗΜ(?:ΕΡΟΜΗΝΙΑ)?\s*[.\/]?\s*(?:ΝΙΑ)?\s*ΕΚΔ/g,        // Ημ/νία Έκδοσης, Ημερομηνία Έκδοσης, Ημ. Έκδοσης
-    /ΗΜ(?:ΕΡΟΜΗΝΙΑ)?\s*[.\/]?\s*(?:ΝΙΑ)?\s*ΤΙΜΟΛΟΓΙΟΥ/g,  // Ημερομηνία Τιμολογίου
-    /ΕΚΔΟΣΗ\s*ΛΟΓΑΡΙΑΣΜΟΥ/g,
-    /ΕΚΔΟΘΗΚΕ/g,
-    /ISSUE\s*DATE/g, /DATE\s*OF\s*ISSUE/g, /INVOICE\s*DATE/g,
+function _issueNorm(raw){
+  return String(raw||'')
+    .replace(/[­​-‏⁠﻿]/g,'')   // αόρατοι χαρακτήρες / soft hyphen
+    .replace(/ /g,' ')
+    .normalize('NFKC')                                  // µ (U+00B5) → μ, fullwidth → κανονικά
+    .normalize('NFD').replace(/[̀-ͯ]/g,'')    // χωρίς τόνους
+    .toUpperCase()                                      // ς → Σ
+    .replace(/\s+/g,' ');
+}
+
+const _ISSUE_DATE_RE = /(\d{1,2})\s?[\/\-.⁄∕]\s?(\d{1,2})\s?[\/\-.⁄∕]\s?(\d{4})/g;
+
+function _issueLabelRegexes(){
+  const L = w => w.split('').join('\\s?');                       // επιτρέπει κενό ανάμεσα στα γράμματα
+  const SEP = '[\\s./\\-\\u2044\\u2215]{0,3}';
+  const HM = 'Η\\s?Μ(?:' + L('ΕΡΟΜΗΝΙΑ') + ')?' + SEP + '(?:' + L('ΝΙΑ') + ')?\\s?';
+  return [
+    new RegExp(HM + L('ΕΚΔ'), 'g'),                              // Ημ/νία Έκδοσης, Ημερομηνία Έκδοσης, Ημ. Έκδοσης
+    new RegExp(HM + L('ΤΙΜΟΛΟΓΙΟΥ'), 'g'),                       // Ημερομηνία Τιμολογίου
+    new RegExp(L('ΕΚΔΟΣΗ') + '\\s?' + L('ΛΟΓΑΡΙΑΣΜΟΥ'), 'g'),
+    new RegExp(L('ΕΚΔΟΘΗΚΕ'), 'g'),
+    /ISSUE\s?DATE/g, /DATE\s?OF\s?ISSUE/g, /INVOICE\s?DATE/g,
   ];
-  const dateRe = /(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{4})/;
-  const found = [];
-  for(const re of labels){
+}
+
+function extractIssueDate(rawText, billYear, billMonth, dueISO){
+  const text = _issueNorm(rawText);
+
+  // όλες οι ημερομηνίες του κειμένου, με θέση
+  const dates = [];
+  _ISSUE_DATE_RE.lastIndex = 0;
+  let dm;
+  while((dm = _ISSUE_DATE_RE.exec(text))){
+    dates.push({start:dm.index, end:dm.index+dm[0].length, d:parseInt(dm[1],10), mo:parseInt(dm[2],10), y:parseInt(dm[3],10)});
+  }
+  if(!dates.length) return null;
+
+  // υποψήφιες: πρώτα ημερομηνία ΜΕΤΑ την ετικέτα (έως 80 χαρ.), αλλιώς η πλησιέστερη ΠΡΙΝ (έως 40 χαρ.)
+  const cands = [];
+  for(const re of _issueLabelRegexes()){
     re.lastIndex = 0;
     let m;
     while((m = re.exec(text))){
-      const after = text.slice(m.index + m[0].length, m.index + m[0].length + 60);
-      const dm = after.match(dateRe);
-      if(dm) found.push({pos:m.index, d:parseInt(dm[1],10), mo:parseInt(dm[2],10), y:parseInt(dm[3],10)});
+      const lEnd = m.index + m[0].length;
+      const after  = dates.find(x => x.start >= lEnd && x.start - lEnd <= 80);
+      const before = dates.slice().reverse().find(x => x.end <= m.index && m.index - x.end <= 40);
+      if(after)  cands.push({pos:m.index, pri:0, c:after});
+      if(before) cands.push({pos:m.index, pri:1, c:before});
     }
   }
-  found.sort((a,b)=>a.pos-b.pos);
+  cands.sort((a,b)=>a.pri-b.pri || a.pos-b.pos);
 
   const due = dueISO ? new Date(dueISO+'T00:00:00') : null;
   const periodStart = (billYear && billMonth) ? new Date(billYear, billMonth-1, 1) : null;
   const DAY = 86400000;
-  for(const c of found){
+  for(const {c} of cands){
     if(c.y<2000 || c.y>2100 || c.mo<1 || c.mo>12 || c.d<1 || c.d>31) continue;
     const dt = new Date(c.y, c.mo-1, c.d);
     if(dt.getMonth()!==c.mo-1 || dt.getDate()!==c.d) continue;           // π.χ. 31/02
@@ -2012,6 +2042,21 @@ function extractIssueDate(rawText, billYear, billMonth, dueISO){
     return `${c.y}-${pad2(c.mo)}-${pad2(c.d)}`;
   }
   return null;
+}
+
+/* Διάγνωση: τι κείμενο διάβασε η εφαρμογή γύρω από «έκδοση» και ποιες ημερομηνίες βρήκε */
+function describeIssueContext(rawText){
+  const raw = String(rawText||'');
+  const t = _issueNorm(raw);
+  const out = [`Χαρακτήρες κειμένου PDF: ${raw.replace(/\s+/g,'').length}`];
+  if(raw.replace(/\s+/g,'').length < 30) out.push('⚠ Σχεδόν καθόλου κείμενο — πιθανώς σαρωμένο PDF (εικόνα).');
+  const re = /ΕΚΔ|ΤΙΜΟΛΟΓ|ISSUE/g; let m, k=0;
+  while((m = re.exec(t)) && k<6){ out.push(`[${k+1}] …${t.slice(Math.max(0,m.index-50), m.index+110)}…`); k++; }
+  if(!k) out.push('Δεν βρέθηκε καμία λέξη «ΕΚΔ/ΤΙΜΟΛΟΓ/ISSUE» στο κείμενο.');
+  const ds = [...t.matchAll(/(\d{1,2})\s?[\/\-.]\s?(\d{1,2})\s?[\/\-.]\s?(\d{4})/g)].slice(0,12).map(x=>`${x[0]} ← …${t.slice(Math.max(0,x.index-30), x.index).trim()}`);
+  out.push('Ημερομηνίες (με πλαίσιο):\n' + (ds.join('\n') || '—'));
+  out.push('Αρχή κειμένου: ' + t.slice(0,250));
+  return out.join('\n');
 }
 
 /* ---- Computed due date: τελευταία ημέρα επόμενου μήνα ---- */
@@ -2773,6 +2818,22 @@ function renderForecast(){
 }
 
 /* Ανάγνωση ημερομηνίας έκδοσης από το PDF ενός λογαριασμού (συμπληρώνει τη φόρμα· αποθηκεύεται με «Αποθήκευση») */
+function showIssueDebug(text){
+  const old = document.getElementById('issueDebugBox');
+  if(old) old.remove();
+  const anchor = document.getElementById('dateSuggestBox');
+  if(!anchor) return;
+  const det = document.createElement('details');
+  det.id = 'issueDebugBox';
+  det.className = 'suggest-box';
+  det.open = true;
+  det.innerHTML = '<summary style="cursor:pointer;font-weight:700;color:var(--teal);">🔎 Τι διάβασε η εφαρμογή από το PDF (για διάγνωση)</summary>' +
+    '<div class="sg-foot" style="margin:6px 0;">Αντιγράψτε αυτό το κείμενο και στείλτε το, ώστε να προσαρμοστεί η ανάγνωση στη μορφή του λογαριασμού.</div>' +
+    '<textarea readonly rows="9" style="width:100%;font-family:var(--mono);font-size:11px;"></textarea>';
+  det.querySelector('textarea').value = describeIssueContext(text);
+  anchor.insertAdjacentElement('afterend', det);
+}
+
 async function runIssueExtract(id){
   const bill = STATE.bills.find(b=>b.id===id);
   const blob = bill && (bill.billBlob || bill.combinedBlob);
@@ -2789,6 +2850,7 @@ async function runIssueExtract(id){
       toast('Η ημερομηνία έκδοσης διαβάστηκε από το PDF: ' + formatDateGR(iso) + ' (πατήστε Αποθήκευση).','success');
     } else {
       toast('Δεν βρέθηκε ρητή «Ημ/νία Έκδοσης» στο PDF. Συμπληρώστε την χειροκίνητα.','warn',6000);
+      showIssueDebug(text);
     }
   }catch(e){
     console.error('Issue date read failed', e);
