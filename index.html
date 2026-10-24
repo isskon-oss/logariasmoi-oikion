@@ -533,6 +533,7 @@ tr.stage-sel td{ background: #EDF4F3 !important; }
 .suggest-box .sg-foot{ font-size:11.5px; color:var(--ink-faint); margin-top:6px; }
 .suggest-box .sg-warn{ font-size:11.5px; color:var(--amber); margin-top:4px; }
 .due-guess{ display:block; font-size:11.5px; color:var(--ink-faint); font-style:italic; }
+.forecast-tools{ padding:10px 14px; border-bottom:1px solid var(--line); display:flex; align-items:center; gap:12px; flex-wrap:wrap; font-size:12px; color:var(--ink-faint); }
 .issue-sub{ display:block; font-size:11px; color:var(--ink-faint); }
 </style>
 </head>
@@ -1962,6 +1963,57 @@ function extractDueDate(rawText, billYear, billMonth){
  * - paymentBlob (απόδειξη): ποσό + ημερομηνία πληρωμής
  * Επιστρέφει true αν βρέθηκε έστω ένα στοιχείο.
  */
+/* ---------------- Ημερομηνία ΕΚΔΟΣΗΣ λογαριασμού ----------------
+   Διαβάζεται ΜΟΝΟ όταν υπάρχει ρητή ετικέτα (π.χ. «Ημ/νία Έκδοσης 15/09/2026»).
+   Δεν γίνεται εικασία: αν δεν βρεθεί ετικέτα ή η ημερομηνία δεν είναι εύλογη,
+   επιστρέφεται null και το πεδίο μένει κενό (οι προτάσεις του ιστορικού παραμένουν).
+   Έλεγχοι εγκυρότητας: υπαρκτή ημερομηνία, έκδοση ≤ λήξη (και έως 150 ημέρες πριν),
+   και εντός εύλογου εύρους γύρω από την περίοδο (έτος/μήνας) του λογαριασμού.
+*/
+function extractIssueDate(rawText, billYear, billMonth, dueISO){
+  const text = String(rawText||'').replace(/ /g,' ')
+    .normalize('NFD').replace(/[̀-ͯ]/g,'')   // χωρίς τόνους
+    .toUpperCase().replace(/\s+/g,' ');                // ς→Σ, ομοιόμορφα κενά
+  const labels = [
+    /ΗΜ(?:ΕΡΟΜΗΝΙΑ)?\s*[.\/]?\s*(?:ΝΙΑ)?\s*ΕΚΔ/g,        // Ημ/νία Έκδοσης, Ημερομηνία Έκδοσης, Ημ. Έκδοσης
+    /ΗΜ(?:ΕΡΟΜΗΝΙΑ)?\s*[.\/]?\s*(?:ΝΙΑ)?\s*ΤΙΜΟΛΟΓΙΟΥ/g,  // Ημερομηνία Τιμολογίου
+    /ΕΚΔΟΣΗ\s*ΛΟΓΑΡΙΑΣΜΟΥ/g,
+    /ΕΚΔΟΘΗΚΕ/g,
+    /ISSUE\s*DATE/g, /DATE\s*OF\s*ISSUE/g, /INVOICE\s*DATE/g,
+  ];
+  const dateRe = /(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{4})/;
+  const found = [];
+  for(const re of labels){
+    re.lastIndex = 0;
+    let m;
+    while((m = re.exec(text))){
+      const after = text.slice(m.index + m[0].length, m.index + m[0].length + 60);
+      const dm = after.match(dateRe);
+      if(dm) found.push({pos:m.index, d:parseInt(dm[1],10), mo:parseInt(dm[2],10), y:parseInt(dm[3],10)});
+    }
+  }
+  found.sort((a,b)=>a.pos-b.pos);
+
+  const due = dueISO ? new Date(dueISO+'T00:00:00') : null;
+  const periodStart = (billYear && billMonth) ? new Date(billYear, billMonth-1, 1) : null;
+  const DAY = 86400000;
+  for(const c of found){
+    if(c.y<2000 || c.y>2100 || c.mo<1 || c.mo>12 || c.d<1 || c.d>31) continue;
+    const dt = new Date(c.y, c.mo-1, c.d);
+    if(dt.getMonth()!==c.mo-1 || dt.getDate()!==c.d) continue;           // π.χ. 31/02
+    if(due && !isNaN(due)){
+      const gap = Math.round((due-dt)/DAY);
+      if(gap<0 || gap>150) continue;                                       // έκδοση μετά τη λήξη / πολύ παλιά
+    }
+    if(periodStart){
+      const off = Math.round((dt-periodStart)/DAY);
+      if(off < -62 || off > 200) continue;                                 // εκτός εύλογης περιόδου
+    }
+    return `${c.y}-${pad2(c.mo)}-${pad2(c.d)}`;
+  }
+  return null;
+}
+
 /* ---- Computed due date: τελευταία ημέρα επόμενου μήνα ---- */
 function lastDayOfNextMonth(year, month){
   const nm = month===12 ? 1 : month+1;
@@ -1992,6 +2044,14 @@ async function extractAndApplyAllInfo(bill){
       const due = extractDueDate(billText, bill.year, bill.month);
       if(due){ bill.dueDate = due; found = true; }
     }catch(e){ console.warn('Due date extraction failed', e); }
+  }
+
+  /* ---- ημερομηνία έκδοσης (μόνο αν είναι κενή — δεν αντικαθιστά χειροκίνητη τιμή) ---- */
+  if(billText && !bill.issueDate){
+    try{
+      const iss = extractIssueDate(billText, bill.year, bill.month, bill.dueDate);
+      if(iss){ bill.issueDate = iss; found = true; }
+    }catch(e){ console.warn('Issue date extraction failed', e); }
   }
 
   /* ---- εντοπισμός image-only PDF ---- */
@@ -2685,12 +2745,14 @@ function renderForecast(){
   }
   if(STATE.filters.house !== 'all') list = list.filter(f=>f.houseId === STATE.filters.house);
   cnt.textContent = list.length ? list.length + ' προβλέψεις' : '';
+  const missing = billsMissingIssueDate().length;
+  const toolsHtml = missing ? `<div class="forecast-tools"><button class="btn btn-sm" id="bulkIssueBtn" onclick="bulkExtractIssueDates()">📅 Συμπλήρωση ημερομηνιών έκδοσης από τα PDF (${missing})</button><span>Διαβάζει τη ρητή «Ημ/νία Έκδοσης» κάθε λογαριασμού ώστε οι προβλέψεις να γίνουν ακριβέστερες.</span></div>` : '';
   if(!list.length){
-    body.innerHTML = '<div class="forecast-note" style="border-top:none;text-align:center;padding:18px;">Δεν υπάρχει αρκετό ιστορικό για προβλέψεις (χρειάζονται τουλάχιστον 2 λογαριασμοί της ίδιας κατηγορίας με ημερομηνία λήξης).</div>';
+    body.innerHTML = toolsHtml + '<div class="forecast-note" style="border-top:none;text-align:center;padding:18px;">Δεν υπάρχει αρκετό ιστορικό για προβλέψεις (χρειάζονται τουλάχιστον 2 λογαριασμοί της ίδιας κατηγορίας με ημερομηνία λήξης).</div>';
     return;
   }
   const today = todayISO();
-  body.innerHTML = `
+  body.innerHTML = toolsHtml + `
     <table class="forecast-table">
       <thead><tr><th>Οικία / Κατηγορία</th><th>Επόμενη περίοδος</th><th>Πιθανή έκδοση</th><th>Πιθανή λήξη</th><th>Συχνότητα</th><th>Τελευταίο ποσό</th><th>Εμπιστοσύνη</th></tr></thead>
       <tbody>${list.map(f=>{
@@ -2708,6 +2770,73 @@ function renderForecast(){
       }).join('')}</tbody>
     </table>
     <div class="forecast-note">Οι προβλέψεις βελτιώνονται όσο περισσότερες ημερομηνίες έκδοσης και λήξης καταχωρούνται. Το «?» σημαίνει παραδοχή ${Predictor.DEFAULT_GAP_DAYS} ημερών μεταξύ έκδοσης και λήξης (δεν υπάρχουν ακόμα ημερομηνίες έκδοσης στο ιστορικό).</div>`;
+}
+
+/* Ανάγνωση ημερομηνίας έκδοσης από το PDF ενός λογαριασμού (συμπληρώνει τη φόρμα· αποθηκεύεται με «Αποθήκευση») */
+async function runIssueExtract(id){
+  const bill = STATE.bills.find(b=>b.id===id);
+  const blob = bill && (bill.billBlob || bill.combinedBlob);
+  if(!blob){ toast('Δεν υπάρχει PDF λογαριασμού.','warn'); return; }
+  const btn = document.getElementById('readIssueBtn');
+  if(btn){ btn.textContent='Ανάγνωση…'; btn.disabled=true; }
+  try{
+    const text = await extractTextFromPdfBlob(blob);
+    const dueEl = document.getElementById('f_dueDate');
+    const iso = extractIssueDate(text, bill.year, bill.month, dueEl ? dueEl.value : bill.dueDate);
+    if(iso){
+      document.getElementById('f_issueDate').value = iso;
+      updateDateSuggestions(id);
+      toast('Η ημερομηνία έκδοσης διαβάστηκε από το PDF: ' + formatDateGR(iso) + ' (πατήστε Αποθήκευση).','success');
+    } else {
+      toast('Δεν βρέθηκε ρητή «Ημ/νία Έκδοσης» στο PDF. Συμπληρώστε την χειροκίνητα.','warn',6000);
+    }
+  }catch(e){
+    console.error('Issue date read failed', e);
+    toast('Σφάλμα κατά την ανάγνωση του PDF: ' + (e && e.message ? e.message : e),'error');
+  }finally{
+    if(btn){ btn.textContent='Ανάγνωση από PDF'; btn.disabled=false; }
+  }
+}
+
+function billsMissingIssueDate(){
+  return STATE.bills.filter(b=>!b.issueDate && (b.billBlob || b.combinedBlob));
+}
+
+/* Μαζική συμπλήρωση: διαβάζει τα PDF όλων των λογαριασμών που δεν έχουν ημερομηνία έκδοσης */
+let _bulkIssueRunning = false;
+async function bulkExtractIssueDates(){
+  if(_bulkIssueRunning) return;
+  const targets = billsMissingIssueDate();
+  if(!targets.length){ toast('Δεν υπάρχουν λογαριασμοί με PDF χωρίς ημερομηνία έκδοσης.','info'); return; }
+  const ok = await confirmDialog(`Θα διαβαστούν ${targets.length} PDF για ημερομηνία έκδοσης. Θα συμπληρωθούν μόνο όσοι έχουν ρητή «Ημ/νία Έκδοσης» στο έγγραφο· οι υπόλοιποι δεν θα αλλάξουν. Συνέχεια;`);
+  if(!ok) return;
+  _bulkIssueRunning = true;
+  let filled = 0, notFound = 0, failed = 0;
+  for(let i=0;i<targets.length;i++){
+    const b = targets[i];
+    const btn = document.getElementById('bulkIssueBtn');
+    if(btn){ btn.disabled = true; btn.textContent = `Ανάγνωση ${i+1}/${targets.length}…`; }
+    try{
+      const text = await extractTextFromPdfBlob(b.billBlob || b.combinedBlob);
+      const iso = extractIssueDate(text, b.year, b.month, b.dueDate);
+      if(!iso){ notFound++; continue; }
+      b.issueDate = iso;
+      b.updatedAt = new Date().toISOString();
+      await DB.put('bills', b, {skipCloud:true});
+      // Στο cloud στέλνουμε ΜΟΝΟ το νέο πεδίο (όχι ξανά ολόκληρα τα PDF)
+      try{
+        if(Cloud.enabled()) await Cloud.userRef().collection('bills').doc(String(b.id)).set({issueDate: iso, updatedAt: b.updatedAt}, {merge:true});
+      }catch(e){ console.error('Cloud issueDate update failed', e); }
+      filled++;
+    }catch(e){
+      failed++;
+      console.error('Issue date read failed for', b.id, e);
+    }
+  }
+  _bulkIssueRunning = false;
+  scheduleAutoSave();
+  renderAll();
+  toast(`Ημερομηνίες έκδοσης: συμπληρώθηκαν ${filled}, δεν βρέθηκαν ${notFound}${failed?`, σφάλμα ${failed}`:''}.`, filled ? 'success' : 'warn', 8000);
 }
 
 function wireDateSuggestions(billId){
@@ -2821,7 +2950,7 @@ function openBillModal(id, opts={}){
     </div>
     <div class="field-row">
       <div class="field">
-        <label>Ημ/νία έκδοσης <span class="muted small">(προαιρετική)</span></label>
+        <label>Ημ/νία έκδοσης <span class="muted small">(προαιρετική)</span>${(bill.billBlob||bill.combinedBlob) ? ' <button type="button" class="btn-link" id="readIssueBtn" style="margin-left:6px;">Ανάγνωση από PDF</button>' : ''}</label>
         <input type="date" id="f_issueDate" value="${bill.issueDate||''}">
       </div>
       <div class="field">
@@ -2884,6 +3013,8 @@ function openBillModal(id, opts={}){
   `;
 
   wireDateSuggestions(bill.id);
+  const readIssueBtn = document.getElementById('readIssueBtn');
+  if(readIssueBtn) readIssueBtn.onclick = ()=>runIssueExtract(bill.id);
 
   /* status toggle */
   document.querySelectorAll('#statusChoices .choice').forEach(ch=>{
@@ -2975,6 +3106,7 @@ async function runReExtract(id){
       if(bill.amount!==null) document.getElementById('f_amount').value=bill.amount;
       if(bill.paidDate) document.getElementById('f_paidDate').value=bill.paidDate;
       if(bill.dueDate) document.getElementById('f_dueDate').value=bill.dueDate;
+      if(bill.issueDate) document.getElementById('f_issueDate').value=bill.issueDate;
       document.querySelectorAll('#statusChoices .choice').forEach(c=>{
         c.classList.toggle('active', c.dataset.st===bill.status);
       });
