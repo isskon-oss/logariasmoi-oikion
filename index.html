@@ -1985,9 +1985,10 @@ function _issueNorm(raw){
 const _ISSUE_DATE_RE = /(\d{1,2})\s?[\/\-.⁄∕]\s?(\d{1,2})\s?[\/\-.⁄∕]\s?(\d{4})/g;
 
 function _issueLabelRegexes(){
-  const L = w => w.split('').join('\\s?');                       // επιτρέπει κενό ανάμεσα στα γράμματα
+  const LK = {'Α':'A','Β':'B','Ε':'E','Η':'H','Ι':'I','Κ':'K','Μ':'M','Ν':'NV','Ο':'O','Ρ':'P','Τ':'T','Χ':'X','Υ':'Y','Ζ':'Z'};
+  const L = w => w.split('').map(c=>LK[c] ? '['+c+LK[c]+']' : c).join('\\s?');   // κενό ανάμεσα στα γράμματα + ομοιόγραφα λατινικά
   const SEP = '[\\s./\\-\\u2044\\u2215]{0,3}';
-  const HM = 'Η\\s?Μ(?:' + L('ΕΡΟΜΗΝΙΑ') + ')?' + SEP + '(?:' + L('ΝΙΑ') + ')?\\s?';
+  const HM = L('ΗΜ') + '(?:' + L('ΕΡΟΜΗΝΙΑ') + ')?' + SEP + '(?:' + L('ΝΙΑ') + ')?\\s?';
   return [
     new RegExp(HM + L('ΕΚΔ'), 'g'),                              // Ημ/νία Έκδοσης, Ημερομηνία Έκδοσης, Ημ. Έκδοσης
     new RegExp(HM + L('ΤΙΜΟΛΟΓΙΟΥ'), 'g'),                       // Ημερομηνία Τιμολογίου
@@ -2818,6 +2819,71 @@ function renderForecast(){
 }
 
 /* Ανάγνωση ημερομηνίας έκδοσης από το PDF ενός λογαριασμού (συμπληρώνει τη φόρμα· αποθηκεύεται με «Αποθήκευση») */
+/* ---------------- OCR για PDF χωρίς κείμενο ----------------
+   Τα PDF που συμπιέζονται για το cloud (και τα σαρωμένα) είναι εικόνες χωρίς κείμενο.
+   Τότε η σελίδα μετατρέπεται σε εικόνα και διαβάζεται με Tesseract.js (ελληνικό μοντέλο ~1,3 MB,
+   κατεβαίνει μία φορά και αποθηκεύεται στον browser). Τρέχει τοπικά — τίποτα δεν στέλνεται πουθενά. */
+let _tessLibPromise = null, _ocrWorkerPromise = null;
+function loadTesseractLib(){
+  if(window.Tesseract) return Promise.resolve(window.Tesseract);
+  if(_tessLibPromise) return _tessLibPromise;
+  _tessLibPromise = new Promise((resolve,reject)=>{
+    const sc = document.createElement('script');
+    sc.src = 'https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js';
+    sc.onload = ()=> window.Tesseract ? resolve(window.Tesseract) : reject(new Error('Η βιβλιοθήκη OCR δεν φορτώθηκε.'));
+    sc.onerror = ()=>{ _tessLibPromise=null; reject(new Error('Αδυναμία φόρτωσης της βιβλιοθήκης OCR (έλεγχος σύνδεσης στο διαδίκτυο).')); };
+    document.head.appendChild(sc);
+  });
+  return _tessLibPromise;
+}
+function getOcrWorker(){
+  if(!_ocrWorkerPromise){
+    _ocrWorkerPromise = (async()=>{
+      const T = await loadTesseractLib();
+      return T.createWorker('ell', 1, { langPath: 'https://cdn.jsdelivr.net/npm/@tesseract.js-data/ell/4.0.0_best_int' });
+    })().catch(e=>{ _ocrWorkerPromise=null; throw e; });
+  }
+  return _ocrWorkerPromise;
+}
+async function terminateOcrWorker(){
+  if(!_ocrWorkerPromise) return;
+  try{ const w = await _ocrWorkerPromise; await w.terminate(); }catch(e){}
+  _ocrWorkerPromise = null;
+}
+/* OCR των πρώτων σελίδων ενός PDF → κείμενο */
+async function ocrPdfBlob(blob, maxPages=2){
+  const lib = await loadPdfJsLib();
+  const pdf = await lib.getDocument({ data: await blob.arrayBuffer() }).promise;
+  const worker = await getOcrWorker();
+  let out = '';
+  for(let p=1; p<=Math.min(pdf.numPages, maxPages); p++){
+    const page = await pdf.getPage(p);
+    const viewport = page.getViewport({ scale: 2 });
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.round(viewport.width); canvas.height = Math.round(viewport.height);
+    const ctx = canvas.getContext('2d');
+    ctx.fillStyle = '#fff'; ctx.fillRect(0,0,canvas.width,canvas.height);
+    await page.render({ canvasContext: ctx, viewport }).promise;
+    const { data } = await worker.recognize(canvas);
+    out += data.text + '\n';
+  }
+  return out;
+}
+/* Κείμενο PDF: πρώτα το ενσωματωμένο, αλλιώς OCR. Επιστρέφει {text, ocr} */
+async function getBillTextForIssue(blob){
+  let text = '';
+  try{ text = await extractTextFromPdfBlob(blob); }catch(e){ console.warn('PDF text extraction failed', e); }
+  if(text.replace(/\s+/g,'').length >= 30) return { text, ocr:false };
+  return { text: await ocrPdfBlob(blob), ocr:true };
+}
+/* Επαλήθευση OCR: το κείμενο που διαβάστηκε πρέπει να περιέχει την ΗΔΗ γνωστή ημερομηνία λήξης του λογαριασμού */
+function textContainsDate(rawText, iso){
+  if(!iso) return false;
+  const [y,m,d] = iso.split('-').map(n=>parseInt(n,10));
+  const re = new RegExp(`(^|\\D)0?${d}\\s?[\\/\\-.]\\s?0?${m}\\s?[\\/\\-.]\\s?${y}(\\D|$)`);
+  return re.test(_issueNorm(rawText));
+}
+
 function showIssueDebug(text){
   const old = document.getElementById('issueDebugBox');
   if(old) old.remove();
@@ -2840,21 +2906,39 @@ async function runIssueExtract(id){
   if(!blob){ toast('Δεν υπάρχει PDF λογαριασμού.','warn'); return; }
   const btn = document.getElementById('readIssueBtn');
   if(btn){ btn.textContent='Ανάγνωση…'; btn.disabled=true; }
+  let text = '';
   try{
-    const text = await extractTextFromPdfBlob(blob);
+    let res = null;
+    try{ text = await extractTextFromPdfBlob(blob); }catch(e){ console.warn('PDF text extraction failed', e); }
+    if(text.replace(/\s+/g,'').length >= 30){
+      res = { text, ocr:false };
+    } else {
+      toast('Το PDF δεν έχει κείμενο (είναι εικόνα) — γίνεται οπτική αναγνώριση (OCR). Την πρώτη φορά κατεβαίνει το ελληνικό πακέτο (~1,3 MB).','info',7000);
+      if(btn) btn.textContent='OCR…';
+      res = { text: await ocrPdfBlob(blob), ocr:true };
+    }
+    text = res.text;
     const dueEl = document.getElementById('f_dueDate');
-    const iso = extractIssueDate(text, bill.year, bill.month, dueEl ? dueEl.value : bill.dueDate);
+    const dueISO = dueEl ? dueEl.value : bill.dueDate;
+    const iso = extractIssueDate(text, bill.year, bill.month, dueISO);
     if(iso){
       document.getElementById('f_issueDate').value = iso;
       updateDateSuggestions(id);
-      toast('Η ημερομηνία έκδοσης διαβάστηκε από το PDF: ' + formatDateGR(iso) + ' (πατήστε Αποθήκευση).','success');
+      if(res.ocr){
+        const verified = textContainsDate(text, dueISO);
+        toast(verified
+          ? `Διαβάστηκε με OCR: ${formatDateGR(iso)} (επαληθεύτηκε, καθώς το OCR διάβασε σωστά και τη λήξη). Πατήστε Αποθήκευση.`
+          : `Διαβάστηκε με OCR: ${formatDateGR(iso)} — ΕΛΕΓΞΤΕ την με το PDF πριν την αποθήκευση.`, verified ? 'success' : 'warn', 8000);
+      } else {
+        toast('Η ημερομηνία έκδοσης διαβάστηκε από το PDF: ' + formatDateGR(iso) + ' (πατήστε Αποθήκευση).','success');
+      }
     } else {
       toast('Δεν βρέθηκε ρητή «Ημ/νία Έκδοσης» στο PDF. Συμπληρώστε την χειροκίνητα.','warn',6000);
-      showIssueDebug(text);
+      showIssueDebug((res.ocr ? '[Κείμενο από OCR]\n' : '') + text);
     }
   }catch(e){
     console.error('Issue date read failed', e);
-    toast('Σφάλμα κατά την ανάγνωση του PDF: ' + (e && e.message ? e.message : e),'error');
+    toast('Σφάλμα κατά την ανάγνωση του PDF: ' + (e && e.message ? e.message : e),'error',8000);
   }finally{
     if(btn){ btn.textContent='Ανάγνωση από PDF'; btn.disabled=false; }
   }
@@ -2864,24 +2948,27 @@ function billsMissingIssueDate(){
   return STATE.bills.filter(b=>!b.issueDate && (b.billBlob || b.combinedBlob));
 }
 
-/* Μαζική συμπλήρωση: διαβάζει τα PDF όλων των λογαριασμών που δεν έχουν ημερομηνία έκδοσης */
+/* Μαζική συμπλήρωση: διαβάζει τα PDF όλων των λογαριασμών που δεν έχουν ημερομηνία έκδοσης.
+   PDF με κείμενο → απευθείας. PDF-εικόνες → OCR, και η τιμή αποθηκεύεται ΜΟΝΟ αν το OCR διάβασε σωστά
+   και την ήδη καταχωρημένη ημερομηνία λήξης (επαλήθευση)· αλλιώς μένει κενή για χειροκίνητο έλεγχο. */
 let _bulkIssueRunning = false;
 async function bulkExtractIssueDates(){
   if(_bulkIssueRunning) return;
   const targets = billsMissingIssueDate();
   if(!targets.length){ toast('Δεν υπάρχουν λογαριασμοί με PDF χωρίς ημερομηνία έκδοσης.','info'); return; }
-  const ok = await confirmDialog(`Θα διαβαστούν ${targets.length} PDF για ημερομηνία έκδοσης. Θα συμπληρωθούν μόνο όσοι έχουν ρητή «Ημ/νία Έκδοσης» στο έγγραφο· οι υπόλοιποι δεν θα αλλάξουν. Συνέχεια;`);
+  const ok = await confirmDialog(`Θα διαβαστούν ${targets.length} PDF για ημερομηνία έκδοσης. Όσα είναι εικόνες θα διαβαστούν με OCR (περίπου 3–6 δευτ. το καθένα, τοπικά στον browser). Θα συμπληρωθούν μόνο όσα διαβαστούν με βεβαιότητα· οι υπόλοιπες δεν θα αλλάξουν. Συνέχεια;`);
   if(!ok) return;
   _bulkIssueRunning = true;
-  let filled = 0, notFound = 0, failed = 0;
+  let filled = 0, filledOcr = 0, unverified = 0, notFound = 0, failed = 0;
   for(let i=0;i<targets.length;i++){
     const b = targets[i];
     const btn = document.getElementById('bulkIssueBtn');
     if(btn){ btn.disabled = true; btn.textContent = `Ανάγνωση ${i+1}/${targets.length}…`; }
     try{
-      const text = await extractTextFromPdfBlob(b.billBlob || b.combinedBlob);
+      const { text, ocr } = await getBillTextForIssue(b.billBlob || b.combinedBlob);
       const iso = extractIssueDate(text, b.year, b.month, b.dueDate);
-      if(!iso){ notFound++; continue; }
+      if(!iso){ notFound++; console.info('Issue date not found for', b.id, b.category, b.year, b.month); continue; }
+      if(ocr && !textContainsDate(text, b.dueDate)){ unverified++; console.info('OCR issue date unverified (due date not matched) for', b.id, iso); continue; }
       b.issueDate = iso;
       b.updatedAt = new Date().toISOString();
       await DB.put('bills', b, {skipCloud:true});
@@ -2889,16 +2976,22 @@ async function bulkExtractIssueDates(){
       try{
         if(Cloud.enabled()) await Cloud.userRef().collection('bills').doc(String(b.id)).set({issueDate: iso, updatedAt: b.updatedAt}, {merge:true});
       }catch(e){ console.error('Cloud issueDate update failed', e); }
-      filled++;
+      filled++; if(ocr) filledOcr++;
     }catch(e){
       failed++;
       console.error('Issue date read failed for', b.id, e);
+      if(/OCR/.test(String(e && e.message))) { toast(String(e.message),'error',8000); break; }
     }
   }
   _bulkIssueRunning = false;
+  await terminateOcrWorker();
   scheduleAutoSave();
   renderAll();
-  toast(`Ημερομηνίες έκδοσης: συμπληρώθηκαν ${filled}, δεν βρέθηκαν ${notFound}${failed?`, σφάλμα ${failed}`:''}.`, filled ? 'success' : 'warn', 8000);
+  const parts = [`συμπληρώθηκαν ${filled}` + (filledOcr ? ` (${filledOcr} με OCR)` : '')];
+  if(unverified) parts.push(`${unverified} με OCR χωρίς επαλήθευση — άνοιξέ τους και πάτα «Ανάγνωση από PDF»`);
+  if(notFound) parts.push(`δεν βρέθηκε σε ${notFound}`);
+  if(failed) parts.push(`σφάλμα σε ${failed}`);
+  toast('Ημερομηνίες έκδοσης: ' + parts.join(' · ') + '.', filled ? 'success' : 'warn', 12000);
 }
 
 function wireDateSuggestions(billId){
