@@ -1,6 +1,7 @@
 <!DOCTYPE html>
 <html lang="el">
 <head>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500;700&display=swap&subset=greek" rel="stylesheet">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Λογαριασμοί Οικιών</title>
@@ -528,6 +529,12 @@ tr.stage-sel td{ background: #EDF4F3 !important; }
 .conf-low{ background:var(--red-soft); color:var(--red); }
 .suggest-box{ border:1px solid var(--line-strong); background:var(--paper-2); border-radius:var(--radius-m); padding:10px 12px; font-size:13px; margin-bottom:12px; }
 .suggest-box[hidden]{ display:none; }
+.auto-read-bar{ display:flex; flex-wrap:wrap; align-items:center; gap:10px; margin-bottom:12px; }
+.auto-table{ width:100%; border-collapse:collapse; font-size:12.5px; }
+.auto-table th,.auto-table td{ text-align:left; padding:4px 6px; border-bottom:1px solid var(--line); vertical-align:top; }
+.auto-applied-low{ color:var(--amber); font-weight:600; }
+.auto-suggest{ color:var(--teal); }
+.auto-none{ color:var(--ink-faint); }
 .suggest-box .sg-head{ display:flex; justify-content:space-between; align-items:center; margin-bottom:6px; font-weight:700; color:var(--teal); }
 .suggest-box .sg-row{ display:flex; justify-content:space-between; align-items:center; gap:10px; padding:3px 0; }
 .suggest-box .sg-foot{ font-size:11.5px; color:var(--ink-faint); margin-top:6px; }
@@ -535,6 +542,55 @@ tr.stage-sel td{ background: #EDF4F3 !important; }
 .due-guess{ display:block; font-size:11.5px; color:var(--ink-faint); font-style:italic; }
 .forecast-tools{ padding:10px 14px; border-bottom:1px solid var(--line); display:flex; align-items:center; gap:12px; flex-wrap:wrap; font-size:12px; color:var(--ink-faint); }
 .issue-sub{ display:block; font-size:11px; color:var(--ink-faint); }
+
+/* ===================== ΘΕΜΑ: σκούρο navy με χρωματιστά accents ===================== */
+:root{
+  --paper:#0e1024; --paper-2:#161a38; --card:#1a1e3e;
+  --ink:#e9ebff; --ink-soft:#b0b6dd; --ink-faint:#7f87b8;
+  --line:#2b3162; --line-strong:#40478a;
+  --rust:#6d5df6; --rust-dark:#5546dc; --rust-soft:#2a2870;
+  --teal:#8fa8ff; --teal-soft:#212857;
+  --green:#22c58b; --green-soft:#10372f;
+  --amber:#f5b73b; --amber-soft:#3b2f14;
+  --red:#ff6b7a; --red-soft:#40192a;
+  --gray-soft:#242950;
+  --shadow-card:0 1px 2px rgba(0,0,0,.35), 0 8px 22px -10px rgba(0,0,0,.6);
+  --shadow-pop:0 16px 50px -12px rgba(0,0,0,.8);
+  --sans:"Inter","Segoe UI",-apple-system,BlinkMacSystemFont,"Noto Sans","Helvetica Neue",Arial,sans-serif;
+  --mono:"JetBrains Mono","Cascadia Mono","SF Mono",Consolas,monospace;
+  color-scheme: dark;
+}
+body{ background: radial-gradient(900px 500px at 110% -10%, #2a2470 0%, transparent 55%), radial-gradient(700px 400px at -10% 110%, #123a6b 0%, transparent 55%), var(--paper); }
+.topbar{ background: linear-gradient(90deg,#3b82f6 0%,#8b5cf6 55%,#ec4899 100%); color:#fff; border-bottom:1px solid rgba(255,255,255,.18); box-shadow:0 4px 24px -8px rgba(139,92,246,.6); }
+.brand .stub{ background:#fff; opacity:.9; }
+.brand .stub::after{ border-top-color: rgba(60,50,160,.8); }
+.stat-pill{ background:rgba(10,12,40,.28); border-color:rgba(255,255,255,.25); color:#fff; }
+.stat-pill.warn b{ color:#ffe08a; } .stat-pill.bad b{ color:#ffc2c8; } .stat-pill.ok b{ color:#b6f5d8; }
+.btn{ border-radius:9px; background:#212654; border-color:#40478a; color:#e9ebff; }
+.btn:hover{ border-color:#8fa8ff; box-shadow:0 0 0 3px rgba(111,140,255,.18); background:#2a3068; }
+.btn-primary{ background:linear-gradient(135deg,#3b82f6,#7c5cf6); border-color:#5b6cf0; color:#fff; }
+.btn-primary:hover{ background:linear-gradient(135deg,#4b90ff,#8a6cff); box-shadow:0 6px 20px -6px rgba(124,92,246,.7); }
+.btn-ghost{ background:rgba(255,255,255,.12); border-color:rgba(255,255,255,.35); color:#fff; }
+.btn-ghost:hover{ background:rgba(255,255,255,.24); }
+.btn-danger{ background:transparent; border-color:var(--red); color:var(--red); }
+.btn-danger:hover{ background:var(--red-soft); }
+.btn-link{ color:#9db4ff; }
+.chip.active{ background:linear-gradient(135deg,#3b82f6,#8b5cf6); border-color:transparent; color:#fff; }
+input,select,textarea{ background:#12152f; color:var(--ink); border-color:var(--line-strong); }
+input::placeholder,textarea::placeholder{ color:var(--ink-faint); }
+input:focus,select:focus,textarea:focus{ outline:none; border-color:#8fa8ff; box-shadow:0 0 0 3px rgba(111,140,255,.22); }
+.note-box{ border-color:#3b4690; } .note-box.warn{ border-color:#7a5d1d; color:#ffd88a; }
+.auto-extracted-note{ border-color:#1f6b55; } .auto-extracted-note.warn{ border-color:#7a5d1d; }
+tr.stage-sel td{ background:#222a5c !important; }
+.toast{ background:#2b3170; color:#fff; border:1px solid #4a52a8; }
+.toast.warn{ background:var(--amber); color:#2a1d02; }
+.stage-flag.bad,.stage-flag.merge{ color:#fff; }
+.file-upload,.drop-zone{ background:rgba(255,255,255,.03); }
+.doc-frame{ background:#2a2d3f; }
+::selection{ background:#5b6cf0; color:#fff; }
+.section-title,.fchip.need,.split-page.pay,.car{ color:#a9b8ff !important; }
+.year-group > summary .car,.month-block > summary .car{ color:#a9b8ff; }
+::-webkit-scrollbar-thumb{ background:#40478a; }
 </style>
 </head>
 <body>
@@ -2099,8 +2155,11 @@ async function extractAndApplyAllInfo(bill){
     }catch(e){ console.warn('Due date extraction failed', e); }
   }
 
-  /* ---- ημερομηνία έκδοσης (μόνο αν είναι κενή — δεν αντικαθιστά χειροκίνητη τιμή) ---- */
-  if(billText && !bill.issueDate){
+  /* ---- ημερομηνία έκδοσης ----
+     ΚΟΙΝΟΧΡΗΣΤΑ: σταθερός κανόνας = 1η του επόμενου μήνα της δαπάνης. */
+  if(/κοινοχρηστ/iu.test(bill.category)){
+    bill.issueDate = firstDayOfNextMonth(bill.year, bill.month); found = true;
+  } else if(billText && !bill.issueDate){
     try{
       const iss = extractIssueDate(billText, bill.year, bill.month, bill.dueDate);
       if(iss){ bill.issueDate = iss; found = true; }
@@ -2798,8 +2857,8 @@ function renderForecast(){
   }
   if(STATE.filters.house !== 'all') list = list.filter(f=>f.houseId === STATE.filters.house);
   cnt.textContent = list.length ? list.length + ' προβλέψεις' : '';
-  const missing = billsMissingIssueDate().length;
-  const toolsHtml = missing ? `<div class="forecast-tools"><button class="btn btn-sm" id="bulkIssueBtn" onclick="bulkExtractIssueDates()">📅 Συμπλήρωση ημερομηνιών έκδοσης από τα PDF (${missing})</button><span>Διαβάζει τη ρητή «Ημ/νία Έκδοσης» κάθε λογαριασμού ώστε οι προβλέψεις να γίνουν ακριβέστερες.</span></div>` : '';
+  const missing = billsNeedingAutoRead().length;
+  const toolsHtml = missing ? `<div class="forecast-tools"><button class="btn btn-sm" id="bulkIssueBtn" onclick="bulkAutoRead()">🔎 Αυτόματη ανάγνωση PDF για κενά πεδία (${missing})</button><span>Συμπληρώνει μόνο κενά: ποσό, ημ/νίες πληρωμής, έκδοσης, λήξης — με OCR όπου χρειάζεται, μόνο με επαληθευμένες τιμές.</span></div>` : '';
   if(!list.length){
     body.innerHTML = toolsHtml + '<div class="forecast-note" style="border-top:none;text-align:center;padding:18px;">Δεν υπάρχει αρκετό ιστορικό για προβλέψεις (χρειάζονται τουλάχιστον 2 λογαριασμοί της ίδιας κατηγορίας με ημερομηνία λήξης).</div>';
     return;
@@ -2858,14 +2917,14 @@ async function terminateOcrWorker(){
   _ocrWorkerPromise = null;
 }
 /* OCR των πρώτων σελίδων ενός PDF → κείμενο */
-async function ocrPdfBlob(blob, maxPages=2){
+async function ocrPdfBlob(blob, maxPages=2, scale=2){
   const lib = await loadPdfJsLib();
   const pdf = await lib.getDocument({ data: await blob.arrayBuffer() }).promise;
   const worker = await getOcrWorker();
   let out = '';
   for(let p=1; p<=Math.min(pdf.numPages, maxPages); p++){
     const page = await pdf.getPage(p);
-    const viewport = page.getViewport({ scale: 2 });
+    const viewport = page.getViewport({ scale });
     const canvas = document.createElement('canvas');
     canvas.width = Math.round(viewport.width); canvas.height = Math.round(viewport.height);
     const ctx = canvas.getContext('2d');
@@ -2915,72 +2974,88 @@ function _parseOcrDate(raw){
   return m ? { d:parseInt(m[1],10), mo:parseInt(m[2],10), y:parseInt(m[3],10) } : null;
 }
 
-/* → { text, iso, count, reads:[ISO|null…] } */
-async function ocrIssueDate(blob, billYear, billMonth, dueISO, maxPages=2){
+/* → { text, results:{ <key>:{ iso, count, clear, reads, raw, boxes } } }
+   Γενικευμένο: ΜΙΑ ανάγνωση σελίδας βρίσκει τις ετικέτες όλων των specs (π.χ. «Έκδοσης», «Εξόφληση έως»)
+   και για καθεμία ξαναδιαβάζει την περιοχή της ημερομηνίας πολλές φορές (βλ. σχόλιο παραπάνω). */
+async function ocrLabeledDates(blob, specs, maxPages=2){
   const lib = await loadPdfJsLib();
   const pdf = await lib.getDocument({ data: await blob.arrayBuffer() }).promise;
   const worker = await getOcrWorker();
   const LO = 2, SCALES = [2, 2.5, 3], HEIGHTS = [50, 80];
   let fullText = '';
-  const allReads = [], rawReads = [], boxes = [];
+  const acc = {};
+  Object.keys(specs).forEach(k=>{ acc[k] = { reads:[], raw:[], boxes:[] }; });
   for(let p=1; p<=Math.min(pdf.numPages, maxPages); p++){
     const page = await pdf.getPage(p);
     const c1 = await _renderPageCanvas(page, LO);
     const { data } = await worker.recognize(c1);
     fullText += data.text + '\n';
     const words = data.words || [];
-    let c2 = null;
-    for(let i=0;i<words.length;i++){
-      if(!_isIssueLabelWord(words[i].text)) continue;
-      const lab = words[i], lh = Math.max(8, lab.bbox.y1 - lab.bbox.y0);
-      // η λέξη-ημερομηνία: ένα από τα επόμενα λίγα λέξεις, κοντά κατακόρυφα στην ετικέτα
-      let target = null;
-      for(let j=i+1;j<Math.min(words.length,i+9);j++){
-        const w = words[j];
-        if(Math.abs(((w.bbox.y0+w.bbox.y1)/2) - ((lab.bbox.y0+lab.bbox.y1)/2)) > lh*3) continue;
-        if(_digitCount(w.text) >= 6 && /[\/.\-]/.test(w.text) && w.text.length <= 14){ target = w; break; }
-      }
-      if(!target) continue;
-      boxes.push({label:lab.text, target:target.text, bbox:target.bbox});
-      // ανάγνωση 0: η ίδια η λέξη όπως τη διάβασε η ανάγνωση σελίδας
-      {
-        const pd0 = _parseOcrDate(target.text);
-        allReads.push(pd0 ? _issueSane(pd0.y, pd0.mo, pd0.d, billYear, billMonth, dueISO) : null); rawReads.push(String(target.text));
-      }
-      const th = target.bbox.y1 - target.bbox.y0, pad = Math.round(th*0.5);
-      await worker.setParameters({ tessedit_char_whitelist:'0123456789/.-', tessedit_pageseg_mode:'7' });
-      try{
-        for(const S of SCALES){
-          const cS = (S===LO) ? c1 : await _renderPageCanvas(page, S);
-          const r = S/LO;
-          const sx = Math.max(0, Math.round((target.bbox.x0-pad)*r)), sy = Math.max(0, Math.round((target.bbox.y0-pad)*r));
-          const sw = Math.min(cS.width-sx, Math.round((target.bbox.x1-target.bbox.x0+2*pad)*r));
-          const sh = Math.min(cS.height-sy, Math.round((th+2*pad)*r));
-          if(sw<10 || sh<10) continue;
-          for(const H of HEIGHTS){
-            const k = H / sh, cw = Math.round(sw*k);
-            const cc = document.createElement('canvas'); cc.width = cw+60; cc.height = H+60;
-            const cx = cc.getContext('2d'); cx.fillStyle='#fff'; cx.fillRect(0,0,cc.width,cc.height);
-            cx.imageSmoothingEnabled = true; cx.imageSmoothingQuality = 'high';
-            cx.drawImage(cS, sx, sy, sw, sh, 30, 30, cw, H);
-            const rr = await worker.recognize(cc);
-            const pd = _parseOcrDate(rr.data.text);
-            allReads.push(pd ? _issueSane(pd.y, pd.mo, pd.d, billYear, billMonth, dueISO) : null);
-            rawReads.push(String(rr.data.text||'').trim());
-          }
+    const cache = {};   // καμβάδες άλλων κλιμάκων, ανά σελίδα
+    for(const key of Object.keys(specs)){
+      const spec = specs[key];
+      const used = new Set();
+      for(let i=0;i<words.length;i++){
+        if(!spec.labelTest(words[i].text)) continue;
+        const lab = words[i], lh = Math.max(8, lab.bbox.y1 - lab.bbox.y0);
+        let target = null;
+        for(let j=i+1;j<Math.min(words.length,i+9);j++){
+          const w = words[j];
+          if(Math.abs(((w.bbox.y0+w.bbox.y1)/2) - ((lab.bbox.y0+lab.bbox.y1)/2)) > lh*3) continue;
+          if(_digitCount(w.text) >= 6 && /[\/.\-]/.test(w.text) && w.text.length <= 14){ target = w; break; }
         }
-      } finally {
-        await worker.setParameters({ tessedit_char_whitelist:'', tessedit_pageseg_mode:'3' });   // επαναφορά
+        if(!target || used.has(target)) continue;
+        used.add(target);
+        const A = acc[key];
+        A.boxes.push({label:lab.text, target:target.text, page:p});
+        const pd0 = _parseOcrDate(target.text);
+        A.reads.push(pd0 ? spec.sane(pd0.y, pd0.mo, pd0.d) : null); A.raw.push(String(target.text));
+        const th = target.bbox.y1 - target.bbox.y0, pad = Math.round(th*0.5);
+        await worker.setParameters({ tessedit_char_whitelist:'0123456789/.-', tessedit_pageseg_mode:'7' });
+        try{
+          for(const S of SCALES){
+            const cS = (S===LO) ? c1 : (cache[S] || (cache[S] = await _renderPageCanvas(page, S)));
+            const r = S/LO;
+            const sx = Math.max(0, Math.round((target.bbox.x0-pad)*r)), sy = Math.max(0, Math.round((target.bbox.y0-pad)*r));
+            const sw = Math.min(cS.width-sx, Math.round((target.bbox.x1-target.bbox.x0+2*pad)*r));
+            const sh = Math.min(cS.height-sy, Math.round((th+2*pad)*r));
+            if(sw<10 || sh<10) continue;
+            for(const H of HEIGHTS){
+              const k = H / sh, cw = Math.round(sw*k);
+              const cc = document.createElement('canvas'); cc.width = cw+60; cc.height = H+60;
+              const cx = cc.getContext('2d'); cx.fillStyle='#fff'; cx.fillRect(0,0,cc.width,cc.height);
+              cx.imageSmoothingEnabled = true; cx.imageSmoothingQuality = 'high';
+              cx.drawImage(cS, sx, sy, sw, sh, 30, 30, cw, H);
+              const rr = await worker.recognize(cc);
+              const pd = _parseOcrDate(rr.data.text);
+              A.reads.push(pd ? spec.sane(pd.y, pd.mo, pd.d) : null);
+              A.raw.push(String(rr.data.text||'').trim());
+            }
+          }
+        } finally {
+          await worker.setParameters({ tessedit_char_whitelist:'', tessedit_pageseg_mode:'3' });   // επαναφορά
+        }
       }
     }
   }
-  // συναίνεση: η πιο συχνή έγκυρη ημερομηνία
-  const tally = {};
-  allReads.filter(Boolean).forEach(x=>{ tally[x]=(tally[x]||0)+1; });
-  const ranked = Object.entries(tally).sort((a,b)=>b[1]-a[1]);
-  const best = ranked[0], second = ranked[1];
-  const clear = !!best && best[1] >= 3 && (!second || second[1] * 2 <= best[1]);   // ≥3 συμφωνίες και σαφής πλειοψηφία
-  return { text: fullText, iso: best ? best[0] : null, count: best ? best[1] : 0, clear, reads: allReads, raw: rawReads, boxes };
+  const results = {};
+  for(const key of Object.keys(specs)){
+    const A = acc[key], tally = {};
+    A.reads.filter(Boolean).forEach(x=>{ tally[x]=(tally[x]||0)+1; });
+    const ranked = Object.entries(tally).sort((a,b)=>b[1]-a[1]);
+    const best = ranked[0], second = ranked[1];
+    const clear = !!best && best[1] >= 3 && (!second || second[1] * 2 <= best[1]);   // ≥3 συμφωνίες και σαφής πλειοψηφία
+    results[key] = { iso: best ? best[0] : null, count: best ? best[1] : 0, clear, reads:A.reads, raw:A.raw, boxes:A.boxes };
+  }
+  return { text: fullText, results };
+}
+
+/* → { text, iso, count, clear, reads, raw, boxes }  (συμβατότητα με το προηγούμενο API) */
+async function ocrIssueDate(blob, billYear, billMonth, dueISO, maxPages=2){
+  const r = await ocrLabeledDates(blob, {
+    issue: { labelTest:_isIssueLabelWord, sane:(Y,M,D)=>_issueSane(Y,M,D,billYear,billMonth,dueISO) }
+  }, maxPages);
+  return Object.assign({ text:r.text }, r.results.issue);
 }
 
 /* Ενιαία ανάγνωση ημερομηνίας έκδοσης από PDF → { iso, ocr, verified, text, reads } */
@@ -3122,6 +3197,448 @@ async function bulkExtractIssueDates(){
   toast('Ημερομηνίες έκδοσης: ' + parts.join(' · ') + '.', filled ? 'success' : 'warn', 12000);
 }
 
+/* =====================================================================
+   ΚΕΝΤΡΙΚΗ ΑΝΑΓΝΩΣΗ ΠΕΔΙΩΝ — καθαρές συναρτήσεις (χωρίς DOM)
+   ===================================================================== */
+function firstDayOfNextMonth(year, month){
+  const ny = month===12 ? year+1 : year, nm = month===12 ? 1 : month+1;
+  return `${ny}-${pad2(nm)}-01`;
+}
+function isKoinochrista(category){ return /ΚΟΙΝΟΧΡΗΣΤ/.test(_issueNorm(category)); }
+
+/* Ψηφοφορία πολλών αναγνώσεων. Τιμή από «ακριβές» κείμενο (όχι OCR) μετράει διπλά. */
+function voteValues(values, minCount=2){
+  const t = new Map();
+  values.forEach(v=>{ if(v===null||v===undefined||v==='') return; const k=String(v); t.set(k,(t.get(k)||0)+1); });
+  const r = [...t.entries()].sort((a,b)=>b[1]-a[1]);
+  if(!r.length) return { value:null, count:0, verified:false };
+  const c = r[0][1], second = r[1] ? r[1][1] : 0;
+  return { value:r[0][0], count:c, verified: c>=minCount && second*2<=c };
+}
+
+/* ---- Κατηγορία (πάροχος) ---- */
+const CATEGORY_KEYWORDS = [
+  { name:'ΔΕΗ',          re:/(^|[^Α-Ω])ΔΕΗ([^Α-Ω]|$)|ΔΗΜΟΣΙΑ ΕΠΙΧΕΙΡΗΣΗ ΗΛΕΚΤΡΙΣΜΟΥ/ },
+  { name:'ΕΥΔΑΠ',        re:/(^|[^Α-Ω])ΕΥΔΑΠ([^Α-Ω]|$)/ },
+  { name:'ΕΥΑΘ',         re:/(^|[^Α-Ω])ΕΥΑΘ([^Α-Ω]|$)/ },
+  { name:'Κοινόχρηστα',  re:/ΚΟΙΝΟΧΡΗΣΤ|CASA ?CARE/ },
+  { name:'Φυσικό Αέριο', re:/ΦΥΣΙΚΟ ΑΕΡΙΟ|(^|[^Α-Ω])ΔΕΠΑ([^Α-Ω]|$)|ΕΔΑ ΑΤΤΙΚΗΣ|ΕΤΑΙΡΕΙΑ ΠΑΡΟΧΗΣ ΑΕΡΙΟΥ/ },
+  { name:'COSMOTE',      re:/COSMOTE|ΚΟΣΜΟΤΕ/ },
+  { name:'Vodafone',     re:/VODAFONE|ΒΟΝΤΑΦΟΝ/ },
+  { name:'NOVA',         re:/(^|[^A-Z])NOVA([^A-Z]|$)/ },
+];
+function _escRe(s){ return s.replace(/[.*+?^${}()|[\]\\]/g,'\\$&'); }
+
+/* knownCats: οι κατηγορίες που ήδη υπάρχουν στα δεδομένα (διατηρείται η γραφή τους) */
+function detectCategory(rawText, knownCats){
+  const t = _issueNorm(rawText);
+  const found = new Map();   // norm → εμφανιζόμενο όνομα
+  const display = n => (knownCats||[]).find(c=>_issueNorm(c)===n) || null;
+  for(const k of CATEGORY_KEYWORDS){
+    if(k.re.test(t)){ const n=_issueNorm(k.name); found.set(n, display(n) || k.name); }
+  }
+  for(const c of (knownCats||[])){
+    const n = _issueNorm(c);
+    if(n.length<3 || found.has(n)) continue;
+    if(new RegExp('(^|[^Α-ΩA-Z0-9])'+_escRe(n)+'([^Α-ΩA-Z0-9]|$)').test(t)) found.set(n, c);
+  }
+  return found.size===1 ? [...found.values()][0] : null;      // αμφίσημο → καμία πρόταση
+}
+
+/* ---- Οικία: διεύθυνση (οδός + αριθμός) μέσα στο κείμενο ---- */
+function detectHouse(rawText, houses){
+  const words = _issueNorm(rawText).split(/[^Α-ΩA-Z0-9]+/).filter(Boolean);
+  const scored = [];
+  for(const h of (houses||[])){
+    const toks = _issueNorm(h.name).split(/[^Α-ΩA-Z0-9]+/).filter(Boolean);
+    const streets = toks.filter(x=>/^[Α-ΩA-Z]{4,}$/.test(x)), nums = toks.filter(x=>/^\d+[Α-ΩA-Z]?$/.test(x));
+    if(!streets.length) continue;
+    let best = 0;
+    words.forEach((w,i)=>{
+      const ok = streets.some(s => w===s || (s.length>=6 && w.length>=5 && s.slice(0,5)===w.slice(0,5) && _lev(w,s)<=Math.max(2,Math.floor(s.length/4))));
+      if(!ok) return;
+      const near = words.slice(i+1,i+4);
+      best = Math.max(best, nums.length ? (nums.every(n=>near.includes(n)) ? 2 : 1) : 2);
+    });
+    if(best) scored.push({h, best});
+  }
+  const top = scored.filter(x=>x.best===2);
+  return top.length===1 ? top[0].h.id : null;
+}
+
+/* ---- Μήνας δαπάνης κοινοχρήστων (π.χ. «ΚΟΙΝΟΧΡΗΣΤΑ ΜΗΝΟΣ ΣΕΠΤΕΜΒΡΙΟΥ 2026») ---- */
+const MONTH_STEMS = ['ΙΑΝΟΥΑΡ','ΦΕΒΡΟΥΑΡ','ΜΑΡΤ','ΑΠΡΙΛ','ΜΑΙΟ|ΜΑΪΟ|ΜΑΙΟΥ','ΙΟΥΝ','ΙΟΥΛ','ΑΥΓΟΥΣΤ','ΣΕΠΤΕΜΒΡ','ΟΚΤΩΒΡ','ΝΟΕΜΒΡ','ΔΕΚΕΜΒΡ'];
+function detectExpenseMonth(rawText){
+  const t = _issueNorm(rawText);
+  const ctx = /(?:ΚΟΙΝΟΧΡΗΣΤ[Α-Ω]*|ΔΑΠΑΝ[Α-Ω]*|ΜΗΝΑΣ|ΜΗΝΟΣ|ΠΕΡΙΟΔΟΣ)[^0-9]{0,40}?/;
+  for(let i=0;i<12;i++){
+    const re = new RegExp(ctx.source + '(?:' + MONTH_STEMS[i] + ')[Α-Ω]*\\s?(20\\d{2})?');
+    const m = t.match(re);
+    if(m) return { month:i+1, year:m[1]?parseInt(m[1],10):null };
+  }
+  return null;
+}
+
+/* ---- Ποσό από τον ίδιο τον λογαριασμό ---- */
+function extractBillAmount(rawText){
+  const t = _issueNorm(rawText);
+  const L = w => w.split('').join('\\s?');
+  const labels = [
+    L('ΣΥΝΟΛΙΚΟ')+'\\s?'+L('ΠΟΣΟ')+'\\s?'+L('ΠΛΗΡΩΜΗΣ'),
+    L('ΠΛΗΡΩΤΕΟ')+'\\s?'+L('ΠΟΣΟ'),
+    L('ΠΟΣΟ')+'\\s?'+L('ΠΛΗΡΩΜΗΣ'),
+    L('ΣΥΝΟΛΟ')+'\\s?'+L('ΠΛΗΡΩΜΗΣ'),
+    L('ΣΥΝΟΛΙΚΟ')+'\\s?'+L('ΠΟΣΟ'),
+    L('ΠΛΗΡΩΤΕΟ'),
+  ];
+  const amtRe = /(\d{1,3}(?:\.\d{3})*,\d{2})/;
+  for(const l of labels){
+    const m = new RegExp(l).exec(t);
+    if(!m) continue;
+    const after = t.slice(m.index + m[0].length, m.index + m[0].length + 60);
+    const a = after.match(amtRe);
+    if(a){ const n = parseGreekNumber(a[1]); if(n!==null && n>0 && n<100000) return n; }
+  }
+  return null;
+}
+
+/* ---- Έλεγχοι εύλογου ---- */
+function _isoValid(iso){ const m=/^(\d{4})-(\d{2})-(\d{2})$/.exec(iso||''); if(!m) return null; const d=new Date(+m[1],+m[2]-1,+m[3]); return (d.getMonth()===+m[2]-1 && d.getDate()===+m[3]) ? d : null; }
+function dueSane(iso, billYear, billMonth){
+  const d = _isoValid(iso); if(!d) return null;
+  if(billYear && billMonth){
+    const off = Math.round((d - new Date(billYear, billMonth-1, 1))/86400000);
+    if(off < -20 || off > 210) return null;
+  }
+  return iso;
+}
+function paidSane(iso, billYear, billMonth, issueISO){
+  const d = _isoValid(iso); if(!d || d.getFullYear()<2000) return null;
+  if(d > new Date(Date.now() + 86400000)) return null;                    // όχι μελλοντική πληρωμή
+  const ref = _isoValid(issueISO) || (billYear && billMonth ? new Date(billYear, billMonth-1, 1) : null);
+  if(ref && Math.round((d-ref)/86400000) < -40) return null;               // όχι πολύ πριν τον λογαριασμό
+  return iso;
+}
+
+
+/* =====================================================================
+   ΚΕΝΤΡΙΚΗ ΑΝΑΓΝΩΣΗ ΠΕΔΙΩΝ — ορχήστρωση (OCR) και φόρμα
+   ===================================================================== */
+function _mkIso(y,mo,d){ const iso = `${y}-${pad2(mo)}-${pad2(d)}`; return _isoValid(iso) ? iso : null; }
+function _isDueLabelWord(t){
+  const w = _issueNorm(t).replace(/[^Α-Ω]/g,'');
+  return w.length>=5 && (_lev(w,'ΕΞΟΦΛΗΣΗ')<=2 || _lev(w,'ΕΞΟΦΛΗΣΕΩΣ')<=3 || w==='ΛΗΞΗΣ' || w.startsWith('ΛΗΞΕΩΣ') || _lev(w,'ΠΛΗΡΩΤΕΟ')<=2 || w.startsWith('ΕΜΠΡΟΘΕΣΜ'));
+}
+function _dueFromText(text, y, m){
+  try{ return dueSane(extractDueDate(text, y, m), y, m); }catch(e){ return null; }
+}
+const _rep = (v, n) => Array(n).fill(v);
+
+/* cur = {houseId, year, month, category, amount, paidDate, issueDate, dueDate} (τρέχουσες τιμές φόρμας)
+   → { fields:{house,category,year,month,amount,paidDate,issueDate,dueDate,status}, notes:[], usedOcr }
+   κάθε πεδίο: { value, verified, note } */
+async function autoReadBill(bill, cur, opts={}){
+  const log = opts.onProgress || (()=>{});
+  const out = { fields:{}, notes:[], usedOcr:false };
+  const F = out.fields;
+  const billBlob = bill.billBlob || bill.combinedBlob;
+  const recBlob  = bill.paymentBlob || null;
+  const koin = isKoinochrista(cur.category);
+  const knownCats = uniqueSorted(STATE.bills.map(b=>b.category));
+  const none = { value:null, verified:false };
+
+  /* ---------- 1. Λογαριασμός ---------- */
+  let bTexts = [], bOcr = false, labeled = null;
+  if(billBlob){
+    log('Ανάγνωση λογαριασμού…');
+    let emb = ''; try{ emb = await extractTextFromPdfBlob(billBlob); }catch(e){ console.warn('PDF text failed', e); }
+    if(emb.replace(/\s+/g,'').length >= 30){ bTexts = [emb]; }
+    else {
+      bOcr = true; out.usedOcr = true;
+      const specs = {
+        issue:{ labelTest:_isIssueLabelWord, sane:(Y,M,D)=>{ const i=_mkIso(Y,M,D); return i ? _issueSane(Y,M,D,cur.year,cur.month,null) : null; } },
+        due:  { labelTest:_isDueLabelWord,   sane:(Y,M,D)=>{ const i=_mkIso(Y,M,D); return i ? dueSane(i,cur.year,cur.month) : null; } },
+      };
+      log('OCR λογαριασμού (1/3)…');
+      labeled = await ocrLabeledDates(billBlob, specs, 3);
+      bTexts = [labeled.text];
+      log('OCR λογαριασμού (2/3)…'); bTexts.push(await ocrPdfBlob(billBlob, 3, 2.5));
+      log('OCR λογαριασμού (3/3)…'); bTexts.push(await ocrPdfBlob(billBlob, 3, 3));
+    }
+  }
+  const wb = bOcr ? 1 : 2;      // κείμενο PDF = «ακριβές» → μετράει διπλά
+  const bVotes = fn => voteValues(bTexts.flatMap(t=>_rep(fn(t), wb)));
+
+  /* ---------- 2. Κατηγορία & Οικία (προτάσεις) ---------- */
+  if(billBlob){
+    const c = bVotes(t=>detectCategory(t, knownCats));
+    F.category = c.value ? { value:c.value, verified:c.verified } : none;
+    const h = bVotes(t=>detectHouse(t, STATE.houses));
+    F.house = h.value ? { value:h.value, verified:h.verified } : none;
+  } else { F.category = none; F.house = none; }
+
+  /* ---------- 3. Λήξη ---------- */
+  let due = none;
+  if(koin){
+    due = { value:lastDayOfNextMonth(cur.year, cur.month), verified:true, note:'κανόνας κοινοχρήστων' };
+  } else if(billBlob){
+    const tv = bVotes(t=>_dueFromText(t, cur.year, cur.month));
+    const tg = labeled ? labeled.results.due : null;
+    if(tg && tg.iso && tg.clear) due = { value:tg.iso, verified:true };
+    else if(tv.value && tv.verified) due = { value:tv.value, verified:true };
+    else if(tg && tg.iso) due = { value:tg.iso, verified:false };
+    else if(tv.value) due = { value:tv.value, verified:false };
+  }
+  F.dueDate = due;
+
+  /* ---------- 4. Έκδοση ---------- */
+  let issue = none;
+  if(koin){
+    issue = { value:firstDayOfNextMonth(cur.year, cur.month), verified:true, note:'κανόνας κοινοχρήστων' };
+  } else if(billBlob){
+    if(!bOcr){
+      const iso = extractIssueDate(bTexts[0], cur.year, cur.month, due.value);
+      if(iso) issue = { value:iso, verified:true };
+    } else {
+      const r = labeled.results.issue;
+      const tx = voteValues(bTexts.map(t=>extractIssueDate(t, cur.year, cur.month, due.value)));
+      let riso = r.iso;
+      if(riso){ const [Y,M,D] = riso.split('-').map(Number); if(!_issueSane(Y,M,D,cur.year,cur.month,due.value)) riso = null; }   // σε σχέση με τη λήξη
+      if(riso) issue = { value:riso, verified: r.clear || (r.count>=2 && tx.value===riso) };
+      else if(tx.value) issue = { value:tx.value, verified: tx.count>=3 };
+    }
+  }
+  F.issueDate = issue;
+
+  /* ---------- 5. Απόδειξη: ποσό & ημ/νία πληρωμής ---------- */
+  let rTexts = [], rOcr = false;
+  if(recBlob){
+    log('Ανάγνωση απόδειξης…');
+    let emb = ''; try{ emb = await extractTextFromPdfBlob(recBlob); }catch(e){ console.warn('Receipt text failed', e); }
+    if(emb.replace(/\s+/g,'').length >= 30){ rTexts = [emb]; }
+    else {
+      rOcr = true; out.usedOcr = true;
+      for(const [i,S] of [2,2.5,3].entries()){ log(`OCR απόδειξης (${i+1}/3)…`); rTexts.push(await ocrPdfBlob(recBlob, 2, S)); }
+    }
+  }
+  const wr = rOcr ? 1 : 2;
+  const recInfo = rTexts.map(t=>{ try{ return extractPaymentInfo(t); }catch(e){ return {amount:null,paidDate:null}; } });
+  // ημερομηνία πληρωμής
+  if(recBlob){
+    const pv = voteValues(recInfo.flatMap(i=>_rep(i.paidDate ? paidSane(i.paidDate, cur.year, cur.month, issue.value) : null, wr)));
+    F.paidDate = pv.value ? { value:pv.value, verified:pv.verified } : none;
+  } else { F.paidDate = none; }
+  // ποσό: από απόδειξη και λογαριασμό μαζί (η συμφωνία των δύο εγγράφων είναι ισχυρή επαλήθευση)
+  const recAmts = recInfo.map((i,k)=>{ let a=i.amount; if(a===null && koin){ try{ a = extractCasaCareAmount(rTexts[k]); }catch(e){} } return a; });
+  const billAmts = bTexts.map(t=>{ try{ return (koin && extractCasaCareAmount(t)) || extractBillAmount(t); }catch(e){ return null; } });
+  const av = voteValues([
+    ...recAmts.flatMap(a=>_rep(a!==null?a.toFixed(2):null, wr)),
+    ...billAmts.flatMap(a=>_rep(a!==null&&a!==undefined?Number(a).toFixed(2):null, wb)),
+  ]);
+  F.amount = av.value ? { value:parseFloat(av.value), verified:av.verified } : none;
+  const recAgrees = recAmts.some(a=>a!==null && F.amount.value!==null && a.toFixed(2)===Number(F.amount.value).toFixed(2));
+  F.status = (recBlob && ((F.paidDate.value && F.paidDate.verified) || (F.amount.value!==null && F.amount.verified && recAgrees)))
+    ? { value:'paid', verified:true } : none;
+  if(!recBlob && !bill.combinedBlob) out.notes.push('Δεν υπάρχει απόδειξη πληρωμής — δεν διαβάζεται ημ/νία πληρωμής.');
+  if(bill.combinedBlob && !bill.billBlob && !recBlob) out.notes.push('Το αρχείο είναι αδιαχώριστο· κάντε «Διαχωρισμό» για να διαβαστεί η απόδειξη (ποσό πληρωμής/ημ/νία).');
+
+  /* ---------- 6. Έτος / Μήνας (προτάσεις) ---------- */
+  F.year = none; F.month = none;
+  if(koin && billBlob){
+    const em = bVotes(t=>{ const e = detectExpenseMonth(t); return e ? `${e.year||cur.year}-${e.month}` : null; });
+    if(em.value){ const [y,m] = em.value.split('-').map(Number); F.year = {value:y, verified:em.verified, note:'μήνας δαπάνης'}; F.month = {value:m, verified:em.verified, note:'μήνας δαπάνης'}; }
+  } else if(issue.value && issue.verified){
+    const d = _isoValid(issue.value);
+    F.year = { value:d.getFullYear(), verified:true, note:'από ημ/νία έκδοσης' };
+    F.month = { value:d.getMonth()+1, verified:true, note:'από ημ/νία έκδοσης' };
+  }
+  if(F.dueDate.value && F.issueDate.value && F.dueDate.value < F.issueDate.value){
+    F.dueDate = Object.assign({}, F.dueDate, {verified:false}); F.issueDate = Object.assign({}, F.issueDate, {verified:false});
+    out.notes.push('Η λήξη βγήκε πριν την έκδοση — ελέγξτε τις δύο ημερομηνίες.');
+  }
+  return out;
+}
+
+/* ---------- Πολιτική εφαρμογής ---------- */
+const AUTO_FIELD_LABELS = { house:'Οικία', year:'Έτος', month:'Μήνας', category:'Κατηγορία', amount:'Ποσό', paidDate:'Ημ/νία πληρωμής', issueDate:'Ημ/νία έκδοσης', dueDate:'Ημ/νία λήξης' };
+const AUTO_ORDER = ['house','year','month','category','amount','paidDate','issueDate','dueDate'];
+const AUTO_INPUT_ID = { house:'f_house', year:'f_year', month:'f_month', category:'f_category', amount:'f_amount', paidDate:'f_paidDate', issueDate:'f_issueDate', dueDate:'f_dueDate' };
+const AUTO_SAFE = ['amount','paidDate','issueDate','dueDate'];     // εφαρμόζονται αυτόματα όταν είναι επαληθευμένα
+const AUTO_PROPOSE = ['house','year','month','category'];          // εφαρμόζονται μόνο αν είναι κενά· αλλιώς προτείνονται
+
+function _isEmptyVal(v){ return v===null || v===undefined || v==='' || (typeof v==='number' && isNaN(v)); }
+function _sameVal(key, a, b){
+  if(_isEmptyVal(a) || _isEmptyVal(b)) return false;
+  if(key==='amount') return Math.abs(Number(a)-Number(b))<0.005;
+  if(key==='year' || key==='month') return Number(a)===Number(b);
+  if(key==='category') return _issueNorm(a)===_issueNorm(b);
+  return String(a)===String(b);
+}
+/* → { key: 'none'|'same'|'applied'|'applied-low'|'suggest' } */
+function planAutoApply(fields, cur, mode){
+  const plan = {};
+  for(const key of AUTO_ORDER){
+    const f = fields[key], c = cur[key];
+    if(!f || _isEmptyVal(f.value)){ plan[key]='none'; continue; }
+    if(_sameVal(key, c, f.value)){ plan[key]='same'; continue; }
+    const empty = _isEmptyVal(c) || (key==='house' && !STATE.houses.some(h=>h.id===c));
+    if(mode==='bulk'){
+      plan[key] = (AUTO_SAFE.includes(key) && empty && f.verified) ? 'applied' : (AUTO_SAFE.includes(key) && empty ? 'skipped-low' : 'none');
+      continue;
+    }
+    if(AUTO_SAFE.includes(key)) plan[key] = f.verified ? 'applied' : (empty ? 'applied-low' : 'suggest');
+    else                        plan[key] = empty ? (f.verified ? 'applied' : 'applied-low') : 'suggest';
+  }
+  return plan;
+}
+
+function _fmtAuto(key, v){
+  if(_isEmptyVal(v)) return '—';
+  if(key==='house') return escapeHtml(houseName(v));
+  if(key==='month') return monthName(Number(v));
+  if(key==='amount') return formatMoney(Number(v));
+  if(key==='paidDate' || key==='issueDate' || key==='dueDate') return formatDateGR(v);
+  return escapeHtml(String(v));
+}
+function _setFormValue(key, v){
+  const el = document.getElementById(AUTO_INPUT_ID[key]); if(!el) return;
+  el.value = (key==='amount') ? Number(v).toFixed(2) : String(v);
+  el.dispatchEvent(new Event('input',{bubbles:true})); el.dispatchEvent(new Event('change',{bubbles:true}));
+}
+function _readFormCur(){
+  const g = id => { const el=document.getElementById(id); return el ? el.value : ''; };
+  const amt = g('f_amount');
+  return { houseId:g('f_house'), house:g('f_house'), year:g('f_year')?Number(g('f_year')):null, month:g('f_month')?Number(g('f_month')):null,
+           category:g('f_category').trim(), amount: amt===''?null:parseFloat(amt),
+           paidDate:g('f_paidDate')||null, issueDate:g('f_issueDate')||null, dueDate:g('f_dueDate')||null };
+}
+
+let _autoUndo = null;
+function renderAutoReview(res, plan, cur){
+  const box = document.getElementById('autoReviewBox'); if(!box) return;
+  const label = { same:'✓ ίδιο', applied:'✅ εφαρμόστηκε', 'applied-low':'⚠ εφαρμόστηκε — ΕΛΕΓΞΤΕ', suggest:'💡 πρόταση', none:'— δεν βρέθηκε' };
+  const rows = AUTO_ORDER.map(k=>{
+    const f = res.fields[k], st = plan[k];
+    const btn = st==='suggest' ? `<button type="button" class="btn btn-sm" data-auto-apply="${k}">Εφαρμογή</button>` : '';
+    const note = f && f.note ? `<div class="muted small">${escapeHtml(f.note)}</div>` : '';
+    const ver = (st==='applied'||st==='suggest') && f && !f.verified ? '<div class="muted small">χαμηλή βεβαιότητα</div>' : '';
+    return `<tr><td><b>${AUTO_FIELD_LABELS[k]}</b></td><td>${_fmtAuto(k, cur[k==='house'?'houseId':k])}</td><td>${f&&!_isEmptyVal(f.value)?_fmtAuto(k,f.value):'—'}${note}${ver}</td><td class="auto-st auto-${st}">${label[st]}${btn}</td></tr>`;
+  }).join('');
+  const statusLine = res.fields.status && res.fields.status.value==='paid' ? '<div class="small" style="margin-top:6px;">✅ Υπάρχει επαληθευμένη απόδειξη → η κατάσταση ορίστηκε «Πληρωμένο».</div>' : '';
+  box.innerHTML = `
+    <div class="sg-head"><span>🔎 Αποτέλεσμα αυτόματης ανάγνωσης${res.usedOcr?' (OCR)':''}</span><button type="button" class="btn btn-sm" id="autoUndoBtn">↩ Αναίρεση όλων</button></div>
+    <table class="auto-table"><thead><tr><th>Πεδίο</th><th>Πριν</th><th>Διαβάστηκε</th><th>Ενέργεια</th></tr></thead><tbody>${rows}</tbody></table>
+    ${statusLine}
+    ${res.notes.map(n=>`<div class="sg-warn">${escapeHtml(n)}</div>`).join('')}
+    <div class="sg-foot">Οι αλλαγές είναι μόνο στη φόρμα — δεν αποθηκεύονται μέχρι να πατήσετε «Αποθήκευση». Οι τιμές θεωρούνται «επαληθευμένες» όταν συμφωνούν πολλαπλές αναγνώσεις ή/και λογαριασμός και απόδειξη.</div>`;
+  box.removeAttribute('hidden');
+  const undo = document.getElementById('autoUndoBtn');
+  if(undo) undo.onclick = ()=>{
+    if(!_autoUndo) return;
+    Object.entries(_autoUndo.vals).forEach(([key,v])=>{ const el=document.getElementById(AUTO_INPUT_ID[key]); if(el){ el.value=v; el.dispatchEvent(new Event('input',{bubbles:true})); el.dispatchEvent(new Event('change',{bubbles:true})); } });
+    if(_autoUndo.status){ document.querySelectorAll('#statusChoices .choice').forEach(c=>c.classList.toggle('active', c.dataset.st===_autoUndo.status)); }
+    box.setAttribute('hidden',''); box.innerHTML=''; toast('Οι αλλαγές της αυτόματης ανάγνωσης αναιρέθηκαν.','info');
+  };
+  box.querySelectorAll('[data-auto-apply]').forEach(b=>{
+    b.onclick = ()=>{
+      const k = b.dataset.autoApply; _setFormValue(k, res.fields[k].value);
+      b.closest('td').innerHTML = '✅ εφαρμόστηκε'; updateDateSuggestions(_editingBillId);
+    };
+  });
+}
+
+async function runAutoRead(id){
+  const bill = STATE.bills.find(b=>b.id===id); if(!bill) return;
+  if(!(bill.billBlob || bill.combinedBlob || bill.paymentBlob)){ toast('Δεν υπάρχουν αρχεία PDF για ανάγνωση.','warn'); return; }
+  const btn = document.getElementById('autoReadBtn');
+  const setBtn = t => { if(btn) btn.textContent = t; };
+  if(btn) btn.disabled = true;
+  try{
+    const cur = _readFormCur();
+    toast('Ξεκινά η αυτόματη ανάγνωση. Για PDF-εικόνες χρειάζεται OCR (≈15–40 δευτ.· την πρώτη φορά κατεβαίνει το ελληνικό πακέτο ~1,3 MB).','info',7000);
+    const res = await autoReadBill(bill, cur, { onProgress:setBtn });
+    const plan = planAutoApply(res.fields, cur, 'modal');
+    // στιγμιότυπο για αναίρεση
+    const vals = {}; AUTO_ORDER.forEach(k=>{ const el=document.getElementById(AUTO_INPUT_ID[k]); if(el) vals[k]=el.value; });
+    const activeSt = document.querySelector('#statusChoices .choice.active');
+    _autoUndo = { vals, status: activeSt ? activeSt.dataset.st : null };
+    // πρώτα έτος/μήνας/κατηγορία (επηρεάζουν τους κανόνες), μετά τα υπόλοιπα
+    for(const k of ['house','year','month','category','amount','paidDate','issueDate','dueDate']){
+      if(plan[k]==='applied' || plan[k]==='applied-low') _setFormValue(k, res.fields[k].value);
+    }
+    if(res.fields.status.value==='paid'){
+      document.querySelectorAll('#statusChoices .choice').forEach(c=>c.classList.toggle('active', c.dataset.st==='paid'));
+    }
+    renderAutoReview(res, plan, cur);
+    updateDateSuggestions(id);
+    const n = AUTO_ORDER.filter(k=>plan[k]==='applied'||plan[k]==='applied-low').length;
+    toast(n ? `Αυτόματη ανάγνωση: συμπληρώθηκαν ${n} πεδία — ελέγξτε τον πίνακα και πατήστε Αποθήκευση.` : 'Αυτόματη ανάγνωση: δεν άλλαξε κανένα πεδίο — δείτε τον πίνακα.', n ? 'success' : 'warn', 8000);
+  }catch(e){
+    console.error('Auto read failed', e);
+    toast('Σφάλμα αυτόματης ανάγνωσης: ' + (e && e.message ? e.message : e), 'error', 9000);
+  }finally{
+    if(btn){ btn.disabled = false; btn.textContent = '🔎 Αυτόματη ανάγνωση όλων των πεδίων (OCR)'; }
+    terminateOcrWorker();
+  }
+}
+
+/* ---------- Μαζική εκτέλεση ---------- */
+function billNeedsAutoRead(b){
+  if(b.autoReadAt) return false;
+  if(!(b.billBlob || b.combinedBlob || b.paymentBlob)) return false;
+  return !b.issueDate || !b.dueDate || _isEmptyVal(b.amount) || (!b.paidDate && !!b.paymentBlob);
+}
+function billsNeedingAutoRead(){ return STATE.bills.filter(billNeedsAutoRead); }
+
+let _bulkRunning = false, _bulkCancel = false;
+async function bulkAutoRead(){
+  if(_bulkRunning){ _bulkCancel = true; const b=document.getElementById('bulkIssueBtn'); if(b) b.textContent='Σταματά μετά τον τρέχοντα λογαριασμό…'; return; }
+  const targets = billsNeedingAutoRead();
+  if(!targets.length){ toast('Δεν υπάρχουν λογαριασμοί που να χρειάζονται ανάγνωση.','info'); return; }
+  const mins = Math.max(1, Math.round(targets.length * 25 / 60));
+  const ok = await confirmDialog(`Θα διαβαστούν ${targets.length} λογαριασμοί (περίπου ${mins} λεπτά, τοπικά στον browser). Θα συμπληρωθούν ΜΟΝΟ κενά πεδία (ποσό, ημ/νίες πληρωμής/έκδοσης/λήξης) και μόνο με επαληθευμένες τιμές· τίποτα δεν αντικαθίσταται. Μπορείτε να σταματήσετε πατώντας ξανά το κουμπί. Συνέχεια;`);
+  if(!ok) return;
+  _bulkRunning = true; _bulkCancel = false;
+  let filled = 0, fieldsFilled = 0, lowSkipped = 0, failed = 0, done = 0;
+  for(let i=0;i<targets.length;i++){
+    if(_bulkCancel) break;
+    const b = targets[i];
+    const btn = document.getElementById('bulkIssueBtn');
+    if(btn){ btn.textContent = `Ανάγνωση ${i+1}/${targets.length}… (πάτα για σταμάτημα)`; }
+    try{
+      const cur = { houseId:b.houseId, house:b.houseId, year:b.year, month:b.month, category:b.category, amount:b.amount, paidDate:b.paidDate||null, issueDate:b.issueDate||null, dueDate:b.dueDate||null };
+      const res = await autoReadBill(b, cur, {});
+      const plan = planAutoApply(res.fields, cur, 'bulk');
+      const changed = {};
+      for(const k of AUTO_SAFE){
+        if(plan[k]==='applied'){ b[k] = res.fields[k].value; changed[k] = b[k]; }
+        else if(plan[k]==='skipped-low') lowSkipped++;
+      }
+      if(res.fields.status.value==='paid' && b.status!=='paid' && (changed.amount!==undefined || changed.paidDate!==undefined)){ b.status='paid'; changed.status='paid'; }
+      b.autoReadAt = new Date().toISOString(); changed.autoReadAt = b.autoReadAt;
+      b.updatedAt = b.autoReadAt; changed.updatedAt = b.updatedAt;
+      await DB.put('bills', b, {skipCloud:true});
+      try{ if(Cloud.enabled()) await Cloud.userRef().collection('bills').doc(String(b.id)).set(changed, {merge:true}); }
+      catch(e){ console.error('Cloud update failed', e); }
+      const n = Object.keys(changed).filter(k=>!['autoReadAt','updatedAt','status'].includes(k)).length;
+      if(n){ filled++; fieldsFilled += n; }
+      done++;
+    }catch(e){
+      failed++; console.error('Auto read failed for', b.id, e);
+      if(/OCR/.test(String(e && e.message))){ toast(String(e.message),'error',9000); break; }
+    }
+  }
+  _bulkRunning = false; _bulkCancel = false;
+  await terminateOcrWorker();
+  scheduleAutoSave();
+  renderAll();
+  const parts = [`διαβάστηκαν ${done}`, `συμπληρώθηκαν ${fieldsFilled} πεδία σε ${filled} λογαριασμούς`];
+  if(lowSkipped) parts.push(`${lowSkipped} τιμές χωρίς αρκετή βεβαιότητα έμειναν κενές`);
+  if(failed) parts.push(`σφάλμα σε ${failed}`);
+  toast('Μαζική ανάγνωση: ' + parts.join(' · ') + '.', fieldsFilled ? 'success' : 'warn', 14000);
+}
+
+
 function wireDateSuggestions(billId){
   ['f_house','f_year','f_month','f_category','f_issueDate','f_dueDate'].forEach(id=>{
     const el = document.getElementById(id);
@@ -3212,6 +3729,8 @@ function openBillModal(id, opts={}){
     </div>` : '');
 
   document.getElementById('billModalBody').innerHTML = `
+    ${(bill.billBlob||bill.combinedBlob||bill.paymentBlob) ? '<div class="auto-read-bar"><button type="button" class="btn btn-primary" id="autoReadBtn">🔎 Αυτόματη ανάγνωση όλων των πεδίων (OCR)</button><span class="muted small">Οικία, έτος, μήνας, κατηγορία, ποσό, ημ/νίες πληρωμής-έκδοσης-λήξης</span></div>' : ''}
+    <div class="suggest-box auto-review" id="autoReviewBox" hidden></div>
     <div class="field-row3">
       <div class="field"><label>Οικία</label><select id="f_house">${houseOptions}</select></div>
       <div class="field"><label>Έτος</label><input type="number" id="f_year" value="${bill.year}" min="1990" max="2100"></div>
@@ -3296,6 +3815,8 @@ function openBillModal(id, opts={}){
   `;
 
   wireDateSuggestions(bill.id);
+  const autoReadBtn = document.getElementById('autoReadBtn');
+  if(autoReadBtn) autoReadBtn.onclick = ()=>runAutoRead(bill.id);
   const readIssueBtn = document.getElementById('readIssueBtn');
   if(readIssueBtn) readIssueBtn.onclick = ()=>runIssueExtract(bill.id);
 
