@@ -2192,6 +2192,13 @@ async function extractAndApplyAllInfo(bill){
     }catch(e){ console.warn('Payment info extraction failed', e); }
   }
 
+  /* ---- «κρυφό κείμενο»: κρατάμε το κείμενο των αρχικών PDF δίπλα στον λογαριασμό (λίγα KB),
+         ώστε η ανάγνωση να δουλεύει και αφού το PDF συμπιεστεί/γίνει εικόνα στο cloud ---- */
+  const _keepTxt = t => { const x = (t||'').replace(/[ \t]+/g,' ').trim(); return x.replace(/\s/g,'').length >= 30 ? x.slice(0, 12000) : null; };
+  const tb = _keepTxt(billText), tp = _keepTxt(payText);
+  if(tb) bill.textBill = tb; else delete bill.textBill;
+  if(tp) bill.textPay = tp; else delete bill.textPay;
+
   return found;
 }
 
@@ -3330,7 +3337,14 @@ function _isDueLabelWord(t){
   return w.length>=5 && (_lev(w,'ΕΞΟΦΛΗΣΗ')<=2 || _lev(w,'ΕΞΟΦΛΗΣΕΩΣ')<=3 || w==='ΛΗΞΗΣ' || w.startsWith('ΛΗΞΕΩΣ') || _lev(w,'ΠΛΗΡΩΤΕΟ')<=2 || w.startsWith('ΕΜΠΡΟΘΕΣΜ'));
 }
 function _dueFromText(text, y, m){
-  try{ return dueSane(extractDueDate(text, y, m), y, m); }catch(e){ return null; }
+  try{
+    const n = _issueNorm(text);
+    const re = /(?:ΗΜ[\/.]?\s?ΝΙΑ\s*ΛΗΞΗΣ|ΗΜΕΡΟΜΗΝΙΑ\s*ΛΗΞΗΣ|ΛΗΞΕΩΣ|ΕΞΟΦΛΗΣΗ\s*(?:ΕΩΣ|ΜΕΧΡΙ)?|ΠΛΗΡΩΤΕΟ\s*(?:ΕΩΣ|ΜΕΧΡΙ)|ΕΜΠΡΟΘΕΣΜΗ(?:\s*ΠΡΟΘΕΣΜΙΑ)?)[^0-9]{0,25}(\d{1,2})[\/.\-](\d{1,2})[\/.\-](\d{4})/g;
+    for(const mm of n.matchAll(re)){
+      const iso = _mkIso(+mm[3], +mm[2], +mm[1]); const ok = iso && dueSane(iso, y, m); if(ok) return ok;
+    }
+    return dueSane(extractDueDate(text, y, m), y, m);
+  }catch(e){ return null; }
 }
 const _rep = (v, n) => Array(n).fill(v);
 
@@ -3352,6 +3366,7 @@ async function autoReadBill(bill, cur, opts={}){
   if(billBlob){
     log('Ανάγνωση λογαριασμού…');
     let emb = ''; try{ emb = await extractTextFromPdfBlob(billBlob); }catch(e){ console.warn('PDF text failed', e); }
+    if(emb.replace(/\s+/g,'').length < 30 && bill.textBill) emb = bill.textBill;   // αποθηκευμένο κείμενο του αρχικού PDF
     if(emb.replace(/\s+/g,'').length >= 30){ bTexts = [emb]; }
     else {
       bOcr = true; out.usedOcr = true;
@@ -3415,6 +3430,7 @@ async function autoReadBill(bill, cur, opts={}){
   if(recBlob){
     log('Ανάγνωση απόδειξης…');
     let emb = ''; try{ emb = await extractTextFromPdfBlob(recBlob); }catch(e){ console.warn('Receipt text failed', e); }
+    if(emb.replace(/\s+/g,'').length < 30 && bill.textPay) emb = bill.textPay;
     if(emb.replace(/\s+/g,'').length >= 30){ rTexts = [emb]; }
     else {
       rOcr = true; out.usedOcr = true;
@@ -3868,6 +3884,7 @@ function openBillModal(id, opts={}){
           if(role==='bill'){    bill.billBlob    = file; bill.billName    = file.name; }
           if(role==='payment'){ bill.paymentBlob = file; bill.paymentName = file.name; }
           if(role==='combined'){ bill.combinedBlob = file; bill.combinedName = file.name;
+            delete bill.textBill; delete bill.textPay;
             bill.pageCount = await pdfPageCount(file); }
           /* αν ανέβηκε απόδειξη → αυτόματη επανεξαγωγή στοιχείων */
           if(role==='payment'){
