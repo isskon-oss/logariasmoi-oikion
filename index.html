@@ -374,7 +374,7 @@ button{ font-family: inherit; }
 .stage-table th{ background: var(--paper-2); text-align:left; padding:8px 9px; font-size:10.5px; text-transform:uppercase; letter-spacing:.4px; color:var(--ink-faint); }
 .stage-table td{ padding:7px 9px; border-top:1px solid var(--line); vertical-align:middle; }
 .stage-table input[type=text], .stage-table input[type=number], .stage-table select{
-  border:1px solid var(--line); border-radius:6px; padding:5px 7px; font-size:12px; width:100%; background:#fff;
+  border:1px solid var(--line-strong); border-radius:6px; padding:5px 7px; font-size:12px; width:100%; background:#12152f; color:var(--ink);
 }
 .stage-row.bad{ background: var(--red-soft); }
 .stage-row.merge{ background: var(--amber-soft); }
@@ -512,6 +512,23 @@ tr.stage-sel td{ background: #EDF4F3 !important; }
 
 /* ---------- Προβλέψεις ημερομηνιών ---------- */
 .forecast-panel{ background:var(--card); border:1px solid var(--line); border-radius:var(--radius-m); box-shadow:var(--shadow-card); margin:0 0 16px; }
+.fc-title{ padding:12px 16px 4px; font-weight:700; font-size:14.5px; color:var(--teal); }
+.fc-title .fc-hint{ font-weight:500; font-size:12px; color:var(--ink-faint); }
+.fc-next{ display:grid; grid-template-columns:repeat(auto-fill,minmax(260px,1fr)); gap:10px; padding:8px 16px 14px; }
+.fc-card{ border:1px solid var(--line-strong); border-radius:var(--radius-m); background:var(--paper-2); padding:11px 13px; }
+.fc-card.late{ border-color:var(--red); }
+.fc-card .fc-h{ display:flex; justify-content:space-between; gap:8px; align-items:baseline; }
+.fc-card .fc-h b{ font-size:14px; }
+.fc-card .fc-cd{ font-size:11.5px; font-weight:700; color:var(--amber); white-space:nowrap; }
+.fc-card.late .fc-cd{ color:var(--red); }
+.fc-card .fc-per{ font-size:12px; color:var(--ink-faint); margin:2px 0 8px; }
+.fc-card .fc-row{ display:flex; justify-content:space-between; align-items:center; font-size:13px; padding:2px 0; }
+.fc-card .fc-row > span:first-child{ color:var(--ink-soft); }
+.fc-card .fc-row b{ font-family:var(--mono); font-size:12.5px; }
+.fc-none{ grid-column:1/-1; font-size:13px; color:var(--ink-faint); padding:4px 0; }
+.fc-all{ border-top:1px solid var(--line); }
+.fc-all > summary{ cursor:pointer; padding:9px 16px; font-size:12.5px; font-weight:600; color:var(--ink-soft); list-style:none; }
+.fc-all > summary::-webkit-details-marker{ display:none; }
 .forecast-panel > summary{ cursor:pointer; padding:11px 16px; font-weight:700; font-size:14px; color:var(--teal); display:flex; align-items:center; gap:10px; list-style:none; }
 .forecast-panel > summary::-webkit-details-marker{ display:none; }
 .forecast-panel > summary .fc-hint{ font-weight:500; font-size:12px; color:var(--ink-faint); }
@@ -578,6 +595,8 @@ body{ background: radial-gradient(900px 500px at 110% -10%, #2a2470 0%, transpar
 .chip.active{ background:linear-gradient(135deg,#3b82f6,#8b5cf6); border-color:transparent; color:#fff; }
 input,select,textarea{ background:#12152f; color:var(--ink); border-color:var(--line-strong); }
 input::placeholder,textarea::placeholder{ color:var(--ink-faint); }
+.stage-table input,.stage-table select{ background:#12152f !important; color:var(--ink) !important; }
+.stage-table select option{ background:#12152f; color:var(--ink); }
 input:focus,select:focus,textarea:focus{ outline:none; border-color:#8fa8ff; box-shadow:0 0 0 3px rgba(111,140,255,.22); }
 .note-box{ border-color:#3b4690; } .note-box.warn{ border-color:#7a5d1d; color:#ffd88a; }
 .auto-extracted-note{ border-color:#1f6b55; } .auto-extracted-note.warn{ border-color:#7a5d1d; }
@@ -635,10 +654,14 @@ tr.stage-sel td{ background:#222a5c !important; }
 
   <main class="main">
     <div class="stats-row" id="statsRow"></div>
-    <details class="forecast-panel" id="forecastPanel">
-      <summary>📈 Προβλέψεις επόμενων λογαριασμών <span class="fc-hint">(από το ιστορικό σας)</span><span class="fc-count" id="forecastCount"></span></summary>
-      <div class="forecast-body" id="forecastBody"></div>
-    </details>
+    <section class="forecast-panel" id="forecastPanel">
+      <div class="fc-title">📈 Επόμενοι λογαριασμοί <span class="fc-hint">(πρόβλεψη από το ιστορικό σας)</span></div>
+      <div class="fc-next" id="forecastNext"></div>
+      <details class="fc-all" id="forecastAll">
+        <summary>Όλες οι προβλέψεις <span class="fc-count" id="forecastCount"></span></summary>
+        <div class="forecast-body" id="forecastBody"></div>
+      </details>
+    </section>
     <div class="filters">
       <input type="search" id="searchInput" placeholder="🔍 Αναζήτηση (κατηγορία, οικία, σημειώσεις…)">
       <select id="filterYear"><option value="all">Όλα τα έτη</option></select>
@@ -2428,7 +2451,7 @@ async function commitStaging(){
     groups.get(key).push(it);
   });
 
-  let created=0,updated=0,splitCount=0,extractCount=0;
+  let created=0,updated=0,splitCount=0,extractCount=0,autoFilled=0;
   const now=new Date().toISOString();
   const groupList=Array.from(groups.entries());
 
@@ -2472,6 +2495,12 @@ async function commitStaging(){
       setProgress(Math.round((gi/groupList.length)*85),`Ανάγνωση στοιχείων: ${rec.category} ${rec.month}/${rec.year}…`);
       const didExtract=await extractAndApplyAllInfo(rec);
       if(didExtract) extractCount++;
+      /* ενιαία αυτόματη ανάγνωση (ίδια μηχανή με το κεντρικό κουμπί): συμπληρώνει ΜΟΝΟ κενά πεδία με επαληθευμένες τιμές */
+      try{
+        setProgress(Math.round((gi/groupList.length)*85),`Αυτόματη ανάγνωση πεδίων: ${rec.category} ${rec.month}/${rec.year}…`);
+        const n = await autoFillOnImport(rec);
+        if(n) autoFilled += n;
+      }catch(e){ console.warn('Auto read on import failed', rec.category, e); }
     }catch(e){ console.warn('Auto-extract failed',rec.category,e); }
 
     rec.updatedAt=now;
@@ -2490,6 +2519,7 @@ async function commitStaging(){
   if(updated) parts.push(`${updated} ενημερώθηκαν`);
   if(splitCount) parts.push(`${splitCount} διαχωρίστηκαν αυτόματα`);
   if(extractCount) parts.push(`${extractCount} αποδείξεις αναγνώστηκαν`);
+  if(autoFilled) parts.push(`${autoFilled} επιπλέον πεδία συμπληρώθηκαν από την ανάγνωση PDF`);
   toast('Εισαγωγή ολοκληρώθηκε — '+parts.join(', ')+'.','success',6000);
 }
 
@@ -2863,7 +2893,29 @@ function renderForecast(){
     return;
   }
   if(STATE.filters.house !== 'all') list = list.filter(f=>f.houseId === STATE.filters.house);
-  cnt.textContent = list.length ? list.length + ' προβλέψεις' : '';
+  cnt.textContent = list.length ? '(' + list.length + ')' : '';
+  /* --- άμεσα επόμενοι: λήξη/έκδοση εντός 35 ημερών ή ήδη καθυστερημένοι (αν δεν υπάρχει κανένας → οι 3 πλησιέστεροι) --- */
+  const nextEl = document.getElementById('forecastNext');
+  if(nextEl){
+    const tISO = todayISO(), dayMs = 86400000;
+    const dd = iso => Math.round((new Date(iso+'T00:00:00') - new Date(tISO+'T00:00:00'))/dayMs);
+    const keyDate = f => { const d = f.due || f.issue; return d ? Predictor.toISO(d) : null; };
+    let soon = list.filter(f=>{ const k = keyDate(f); return k && dd(k) <= 35; });
+    if(!soon.length) soon = list.filter(f=>keyDate(f)).slice(0,3);
+    nextEl.innerHTML = soon.length ? soon.map(f=>{
+      const dueISO = f.due ? Predictor.toISO(f.due) : null, k = keyDate(f), n = dd(k);
+      const late = dueISO && dueISO < tISO;
+      const cd = late ? `αναμενόταν πριν ${-n} ημ.` : (n===0 ? 'σήμερα' : `σε ${n} ημ.`);
+      return `<div class="fc-card ${late?'late':''}">
+        <div class="fc-h"><b>${escapeHtml(f.category)}</b><span class="fc-cd">${cd}</span></div>
+        <div class="fc-per">${escapeHtml(houseName(f.houseId))} · ${monthName(f.nextPeriod.month)} ${f.nextPeriod.year}</div>
+        <div class="fc-row"><span>Πιθανή έκδοση</span><b>${f.issue ? Predictor.fmt(f.issue) + (f.assumed ? ' ?' : '') : '—'}</b></div>
+        <div class="fc-row"><span>Πιθανή λήξη</span><b>${f.due ? Predictor.fmt(f.due) : '—'}</b></div>
+        <div class="fc-row"><span>Τελευταίο ποσό</span><b>${f.lastAmount!==null ? formatMoney(f.lastAmount) : '—'}</b></div>
+        <div class="fc-row"><span>Εμπιστοσύνη</span><span class="conf-pill conf-${f.confidence}">${CONF_LABEL[f.confidence]}</span></div>
+      </div>`;
+    }).join('') : '<div class="fc-none">Δεν υπάρχει ακόμα αρκετό ιστορικό για προβλέψεις (χρειάζονται τουλάχιστον 2 λογαριασμοί της ίδιας κατηγορίας).</div>';
+  }
   const missing = billsNeedingAutoRead().length;
   const toolsHtml = missing ? `<div class="forecast-tools"><button class="btn btn-sm" id="bulkIssueBtn" onclick="bulkAutoRead()">🔎 Αυτόματη ανάγνωση PDF για κενά πεδία (${missing})</button><span>Συμπληρώνει μόνο κενά: ποσό, ημ/νίες πληρωμής, έκδοσης, λήξης — με OCR όπου χρειάζεται, μόνο με επαληθευμένες τιμές.</span></div>` : '';
   if(!list.length){
@@ -3300,7 +3352,11 @@ function extractBillAmount(rawText){
   ];
   const amtRe = /(\d{1,3}(?:\.\d{3})*,\d{2})/;
   for(const l of labels){
-    const m = new RegExp(l).exec(t);
+    let m = null;
+    for(const mm of t.matchAll(new RegExp(l,'g'))){
+      if(/ΕΛΑΧΙΣΤ|ΟΦΕΙΛΟΜΕΝ|ΠΡΟΗΓΟΥΜ/.test(t.slice(Math.max(0,mm.index-14), mm.index))) continue;   // όχι «ελάχιστο ποσό πληρωμής»
+      m = mm; break;
+    }
     if(!m) continue;
     const after = t.slice(m.index + m[0].length, m.index + m[0].length + 60);
     const a = after.match(amtRe);
@@ -3368,6 +3424,7 @@ async function autoReadBill(bill, cur, opts={}){
     let emb = ''; try{ emb = await extractTextFromPdfBlob(billBlob); }catch(e){ console.warn('PDF text failed', e); }
     if(emb.replace(/\s+/g,'').length < 30 && bill.textBill) emb = bill.textBill;   // αποθηκευμένο κείμενο του αρχικού PDF
     if(emb.replace(/\s+/g,'').length >= 30){ bTexts = [emb]; }
+    else if(opts.allowOcr === false){ out.skippedOcr = true; }
     else {
       bOcr = true; out.usedOcr = true;
       const specs = {
@@ -3411,7 +3468,7 @@ async function autoReadBill(bill, cur, opts={}){
   if(koin){
     issue = { value:firstDayOfNextMonth(cur.year, cur.month), verified:true, note:'κανόνας κοινοχρήστων' };
   } else if(billBlob){
-    if(!bOcr){
+    if(!bOcr && bTexts.length){
       const iso = extractIssueDate(bTexts[0], cur.year, cur.month, due.value);
       if(iso) issue = { value:iso, verified:true };
     } else {
@@ -3432,6 +3489,7 @@ async function autoReadBill(bill, cur, opts={}){
     let emb = ''; try{ emb = await extractTextFromPdfBlob(recBlob); }catch(e){ console.warn('Receipt text failed', e); }
     if(emb.replace(/\s+/g,'').length < 30 && bill.textPay) emb = bill.textPay;
     if(emb.replace(/\s+/g,'').length >= 30){ rTexts = [emb]; }
+    else if(opts.allowOcr === false){ out.skippedOcr = true; }
     else {
       rOcr = true; out.usedOcr = true;
       for(const [i,S] of [2,2.5,3].entries()){ log(`OCR απόδειξης (${i+1}/3)…`); rTexts.push(await ocrPdfBlob(recBlob, 2, S)); }
@@ -3447,10 +3505,14 @@ async function autoReadBill(bill, cur, opts={}){
   // ποσό: από απόδειξη και λογαριασμό μαζί (η συμφωνία των δύο εγγράφων είναι ισχυρή επαλήθευση)
   const recAmts = recInfo.map((i,k)=>{ let a=i.amount; if(a===null && koin){ try{ a = extractCasaCareAmount(rTexts[k]); }catch(e){} } return a; });
   const billAmts = bTexts.map(t=>{ try{ return (koin && extractCasaCareAmount(t)) || extractBillAmount(t); }catch(e){ return null; } });
-  const av = voteValues([
-    ...recAmts.flatMap(a=>_rep(a!==null?a.toFixed(2):null, wr)),
-    ...billAmts.flatMap(a=>_rep(a!==null&&a!==undefined?Number(a).toFixed(2):null, wb)),
-  ]);
+  const fmtA = a => (a!==null && a!==undefined) ? Number(a).toFixed(2) : null;
+  const rv = voteValues(recAmts.flatMap(a=>_rep(fmtA(a), wr)));
+  const bv = voteValues(billAmts.flatMap(a=>_rep(fmtA(a), wb)));
+  let av;
+  if(rv.value){                                    // η απόδειξη πληρωμής είναι η πηγή αλήθειας για το ποσό
+    av = { value:rv.value, verified: rv.verified || (bv.value===rv.value) };
+    if(bv.value && bv.value!==rv.value) out.notes.push(`Το ποσό της απόδειξης (${rv.value}) διαφέρει από το ποσό του λογαριασμού (${bv.value}) — χρησιμοποιήθηκε της απόδειξης.`);
+  } else av = bv;
   F.amount = av.value ? { value:parseFloat(av.value), verified:av.verified } : none;
   const recAgrees = recAmts.some(a=>a!==null && F.amount.value!==null && a.toFixed(2)===Number(F.amount.value).toFixed(2));
   F.status = (recBlob && ((F.paidDate.value && F.paidDate.verified) || (F.amount.value!==null && F.amount.verified && recAgrees)))
@@ -3599,6 +3661,18 @@ async function runAutoRead(id){
 }
 
 /* ---------- Μαζική εκτέλεση ---------- */
+/* Αυτόματη ανάγνωση κατά την εισαγωγή: χωρίς OCR (αργό)· αν το PDF είναι εικόνα μένει για τη μαζική ανάγνωση. */
+async function autoFillOnImport(rec){
+  const cur = { houseId:rec.houseId, house:rec.houseId, year:rec.year, month:rec.month, category:rec.category, amount:rec.amount, paidDate:rec.paidDate||null, issueDate:rec.issueDate||null, dueDate:rec.dueDate||null };
+  const res = await autoReadBill(rec, cur, { allowOcr:false });
+  const plan = planAutoApply(res.fields, cur, 'bulk');
+  let n = 0;
+  for(const k of AUTO_SAFE){ if(plan[k]==='applied'){ rec[k] = res.fields[k].value; n++; } }
+  if(res.fields.status.value==='paid' && rec.status!=='paid' && (rec.amount!==null && rec.amount!==undefined)) rec.status = 'paid';
+  if(!res.skippedOcr) rec.autoReadAt = new Date().toISOString();
+  return n;
+}
+
 function billNeedsAutoRead(b){
   if(b.autoReadAt) return false;
   if(!(b.billBlob || b.combinedBlob || b.paymentBlob)) return false;
@@ -3729,7 +3803,8 @@ function openBillModal(id, opts={}){
   /* ---- auto-extract banner ---- */
   const hasExtracted = bill.amount !== null && bill.paidDate;
   const isImageOnly  = bill._imageOnly;
-  const extractedBanner = isImageOnly ? `
+  const extractedBanner = '';
+  const _oldBanner = isImageOnly ? `
     <div class="auto-extracted-note warn">
       📷 Σαρωμένο PDF — δεν υπάρχει κείμενο για αυτόματη ανάγνωση.
       Συμπληρώστε ποσό και ημ. πληρωμής χειροκίνητα.
@@ -3768,7 +3843,7 @@ function openBillModal(id, opts={}){
     </div>
     <div class="field-row">
       <div class="field">
-        <label>Ημ/νία έκδοσης <span class="muted small">(προαιρετική)</span>${(bill.billBlob||bill.combinedBlob) ? ' <button type="button" class="btn-link" id="readIssueBtn" style="margin-left:6px;">Ανάγνωση από PDF</button>' : ''}</label>
+        <label>Ημ/νία έκδοσης</label>
         <input type="date" id="f_issueDate" value="${bill.issueDate||''}">
       </div>
       <div class="field">
@@ -3833,8 +3908,6 @@ function openBillModal(id, opts={}){
   wireDateSuggestions(bill.id);
   const autoReadBtn = document.getElementById('autoReadBtn');
   if(autoReadBtn) autoReadBtn.onclick = ()=>runAutoRead(bill.id);
-  const readIssueBtn = document.getElementById('readIssueBtn');
-  if(readIssueBtn) readIssueBtn.onclick = ()=>runIssueExtract(bill.id);
 
   /* status toggle */
   document.querySelectorAll('#statusChoices .choice').forEach(ch=>{
