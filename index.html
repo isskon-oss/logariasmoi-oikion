@@ -3506,6 +3506,26 @@ function _dueFromText(text, y, m){
 }
 const _rep = (v, n) => Array(n).fill(v);
 
+/* Κατάσταση πιστωτικής κάρτας (π.χ. Πειραιώς): οι τιμές της επικεφαλίδας εξάγονται από το PDF χωρίς τις ετικέτες τους,
+   με σταθερή σειρά:  ημ/νία κατάστασης · προηγούμενη ημ/νία · προηγούμενο υπόλοιπο € · ΝΕΟ ΥΠΟΛΟΙΠΟ € · όριο € · ΗΜ/ΝΙΑ ΛΗΞΗΣ · ελάχιστο €
+   → έκδοση = 1η ημερομηνία, λήξη = 2η ημερομηνία-μετά-τα-ποσά, ποσό = νέο υπόλοιπο. Αυστηρός έλεγχος λογικής. */
+function cardStatementDates(text){
+  const A = '(\\d{1,3}(?:\\.\\d{3})*,\\d{2})\\s*(?:€|EUR)?', D = '(\\d{2})\\/(\\d{2})\\/(\\d{4})', W = '\\s+';
+  const re = new RegExp(D+W+D+W+A+W+A+W+A+W+D+W+A, 'g');
+  for(const m of String(text||'').replace(/ /g,' ').matchAll(re)){
+    const iss = _mkIso(+m[3], +m[2], +m[1]), prev = _mkIso(+m[6], +m[5], +m[4]);
+    const due = _mkIso(+m[12], +m[11], +m[10]);
+    if(!iss || !prev || !due) continue;
+    const dPrev = (new Date(iss) - new Date(prev))/86400000, dDue = (new Date(due) - new Date(iss))/86400000;
+    if(dPrev < 20 || dPrev > 40 || dDue < 5 || dDue > 45) continue;               // κατάσταση ανά ~μήνα, λήξη 5–45 ημέρες μετά
+    const bal = parseGreekNumber(m[8]), min = parseGreekNumber(m[13]), limit = parseGreekNumber(m[9]);
+    if(bal===null || min===null || limit===null || limit < bal || min > bal + 0.005) continue;   // όριο ≥ υπόλοιπο, ελάχιστο ≤ υπόλοιπο
+    return { issue:iss, due, amount: bal };
+  }
+  return null;
+}
+
+
 /* Ποσό/ημερομηνία από απόδειξη, ΑΓΚΥΡΩΜΕΝΑ δίπλα στην ετικέτα (το κείμενο PDF είναι μία γραμμή ανά σελίδα,
    οπότε η «πρώτη ημερομηνία/ποσό της γραμμής» δεν αρκεί). */
 function _anchoredAfter(text, labelRes, valueRe, maxGap, reject){
@@ -3586,6 +3606,9 @@ async function autoReadBill(bill, cur, opts={}){
   let due = none;
   if(koin){
     due = { value:lastDayOfNextMonth(cur.year, cur.month), verified:true, note:'κανόνας κοινοχρήστων' };
+  } else if(billBlob && bVotes(t=>{ const c = cardStatementDates(t); return c ? c.due : null; }).value){
+    const cv = bVotes(t=>{ const c = cardStatementDates(t); return c ? c.due : null; });
+    due = { value:cv.value, verified:cv.verified, note:'κατάσταση κάρτας' };
   } else if(billBlob){
     const tv = bVotes(t=>_dueFromText(t, cur.year, cur.month));
     const tg = labeled ? labeled.results.due : null;
@@ -3600,6 +3623,9 @@ async function autoReadBill(bill, cur, opts={}){
   let issue = none;
   if(koin){
     issue = { value:firstDayOfNextMonth(cur.year, cur.month), verified:true, note:'κανόνας κοινοχρήστων' };
+  } else if(billBlob && bVotes(t=>{ const c = cardStatementDates(t); return c ? c.issue : null; }).value){
+    const cv = bVotes(t=>{ const c = cardStatementDates(t); return c ? c.issue : null; });
+    issue = { value:cv.value, verified:cv.verified, note:'κατάσταση κάρτας' };
   } else if(billBlob){
     if(!bOcr && bTexts.length){
       const iso = extractIssueDate(bTexts[0], cur.year, cur.month, due.value);
@@ -3641,7 +3667,7 @@ async function autoReadBill(bill, cur, opts={}){
   } else { F.paidDate = none; }
   // ποσό: από απόδειξη και λογαριασμό μαζί (η συμφωνία των δύο εγγράφων είναι ισχυρή επαλήθευση)
   const recAmts = recInfo.map((i,k)=>{ let a=i.amount; if(a===null && koin){ try{ a = extractCasaCareAmount(rTexts[k]); }catch(e){} } return a; });
-  const billAmts = bTexts.map(t=>{ try{ return (koin && extractCasaCareAmount(t)) || extractBillAmount(t); }catch(e){ return null; } });
+  const billAmts = bTexts.map(t=>{ try{ const c = koin ? null : cardStatementDates(t); return (koin && extractCasaCareAmount(t)) || (c && c.amount) || extractBillAmount(t); }catch(e){ return null; } });
   const fmtA = a => (a!==null && a!==undefined) ? Number(a).toFixed(2) : null;
   const rv = voteValues(recAmts.flatMap(a=>_rep(fmtA(a), wr)));
   const bv = voteValues(billAmts.flatMap(a=>_rep(fmtA(a), wb)));
@@ -3699,11 +3725,13 @@ function planAutoApply(fields, cur, mode){
     if(_sameVal(key, c, f.value)){ plan[key]='same'; continue; }
     const empty = _isEmptyVal(c) || (key==='house' && !STATE.houses.some(h=>h.id===c));
     if(mode==='bulk'){
-      plan[key] = (AUTO_SAFE.includes(key) && empty && f.verified) ? 'applied' : (AUTO_SAFE.includes(key) && empty ? 'skipped-low' : 'none');
+      const wrongDue = key==='dueDate' && !empty && fields.issueDate && fields.issueDate.value===c && f.verified;   // η «λήξη» που έχει καταχωριστεί είναι στην πραγματικότητα η έκδοση
+      plan[key] = ((AUTO_SAFE.includes(key) && empty && f.verified) || wrongDue) ? 'applied' : (AUTO_SAFE.includes(key) && empty ? 'skipped-low' : 'none');
       continue;
     }
-    if(AUTO_SAFE.includes(key)) plan[key] = f.verified ? 'applied' : (empty ? 'applied-low' : 'suggest');
-    else                        plan[key] = empty ? (f.verified ? 'applied' : 'applied-low') : 'suggest';
+    // Τιμές χωρίς επαλήθευση ΔΕΝ εφαρμόζονται ποτέ μόνες τους — προτείνονται (ο χρήστης αποφασίζει)
+    if(AUTO_SAFE.includes(key)) plan[key] = f.verified ? 'applied' : 'suggest';
+    else                        plan[key] = (empty && f.verified) ? 'applied' : 'suggest';
   }
   return plan;
 }
@@ -3817,12 +3845,12 @@ async function autoFillOnImport(rec, snap){
   let n = 0;
   for(const k of AUTO_SAFE){ if(plan[k]==='applied'){ rec[k] = res.fields[k].value; n++; } }
   if(res.fields.status.value==='paid' && rec.status!=='paid' && (rec.amount!==null && rec.amount!==undefined)) rec.status = 'paid';
-  if(!res.skippedOcr) rec.autoReadAt = new Date().toISOString();
+  if(!res.skippedOcr){ rec.autoReadAt = new Date().toISOString(); rec.autoReadVer = 2; }
   return n;
 }
 
 function billNeedsAutoRead(b){
-  if(b.autoReadAt) return false;
+  if(b.autoReadVer===2) return false;
   if(!(b.billBlob || b.combinedBlob || b.paymentBlob)) return false;
   return !b.issueDate || !b.dueDate || _isEmptyVal(b.amount) || (!b.paidDate && !!b.paymentBlob);
 }
@@ -3853,12 +3881,12 @@ async function bulkAutoRead(){
         else if(plan[k]==='skipped-low') lowSkipped++;
       }
       if(res.fields.status.value==='paid' && b.status!=='paid' && (changed.amount!==undefined || changed.paidDate!==undefined)){ b.status='paid'; changed.status='paid'; }
-      b.autoReadAt = new Date().toISOString(); changed.autoReadAt = b.autoReadAt;
+      b.autoReadAt = new Date().toISOString(); changed.autoReadAt = b.autoReadAt; b.autoReadVer = 2; changed.autoReadVer = 2;
       b.updatedAt = b.autoReadAt; changed.updatedAt = b.updatedAt;
       await DB.put('bills', b, {skipCloud:true});
       try{ if(Cloud.enabled()) await Cloud.userRef().collection('bills').doc(String(b.id)).set(changed, {merge:true}); }
       catch(e){ console.error('Cloud update failed', e); }
-      const n = Object.keys(changed).filter(k=>!['autoReadAt','updatedAt','status'].includes(k)).length;
+      const n = Object.keys(changed).filter(k=>!['autoReadAt','autoReadVer','updatedAt','status'].includes(k)).length;
       if(n){ filled++; fieldsFilled += n; }
       done++;
     }catch(e){
