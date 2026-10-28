@@ -953,6 +953,21 @@ window.Predictor = (function(){
   }
   const periodLabel = abs => ({ year: Math.floor(abs/12), month: (abs%12)+1 });
   const keyOf = b => String(b.houseId||'') + '||' + normText(b.category);
+  // «οικογένεια» κατηγορίας: αγνοεί τελικούς αριθμούς, π.χ. ΠΙΣΤΩΤΙΚΗ ΚΑΡΤΑ 4872 / 1932 → ΠΙΣΤΩΤΙΚΗ ΚΑΡΤΑ
+  const baseOf = b => String(b.houseId||'') + '||' + normText(b.category).replace(/[\s\-_]*\d+\s*$/,'').trim();
+  // Αν μια κατηγορία δεν έχει έγκυρο διάστημα έκδοσης→λήξης, δανείζεται το διάστημα από «αδελφές» κατηγορίες (ίδια οικία, ίδια οικογένεια)
+  function borrowGap(st, items, allBills){
+    if(st.gap!=null || !allBills || !items.length) return st;
+    const base = baseOf(items[0]), own = keyOf(items[0]);
+    const gaps=[];
+    allBills.forEach(b=>{
+      if(!b.category || keyOf(b)===own || baseOf(b)!==base) return;
+      const i=parseISO(b.issueDate), d=parseISO(b.dueDate);
+      if(i && d){ const g=daysBetween(i,d); if(g>=1 && g<=120) gaps.push(g); }
+    });
+    if(gaps.length){ st.gap = Math.round(median(gaps)); st.borrowed = true; }
+    return st;
+  }
 
   function groupStats(items){
     const issues = items.map(b=>parseISO(b.issueDate)).filter(Boolean).sort((a,b)=>a-b);
@@ -1031,7 +1046,7 @@ window.Predictor = (function(){
     });
     const out=[];
     groups.forEach(items=>{
-      const st=groupStats(items);
+      const st=borrowGap(groupStats(items), items, bills);
       if(st.n<2 && !st.dues.length) return;
       const r=predictNext(st);
       if(!r.issue && !r.due) return;
@@ -1053,7 +1068,7 @@ window.Predictor = (function(){
     const k = String(ctx.houseId||'') + '||' + normText(ctx.category);
     const items = bills.filter(b=>b.id!==ctx.excludeId && keyOf(b)===k);
     if(!items.length) return null;
-    const st = groupStats(items);
+    const st = borrowGap(groupStats(items), items, bills);
     const p = periodAbs(ctx);
     const base = (p!=null && st.periods.length) ? predictForPeriod(st,p) : predictNext(st);
     const kI=parseISO(ctx.issueDate), kD=parseISO(ctx.dueDate);
@@ -2081,6 +2096,8 @@ function _issueLabelRegexes(){
     {re:new RegExp(HM + L('ΤΙΜΟΛΟΓΙΟΥ'), 'g'), ...A},              // Ημερομηνία Τιμολογίου
     {re:new RegExp(L('ΕΚΔΟΣΗ') + '\\s?' + L('ΛΟΓΑΡΙΑΣΜΟΥ'), 'g'), ...A},
     {re:new RegExp(L('ΕΚΔΟΘΗΚΕ'), 'g'), ...A},
+    {re:new RegExp(HM + L('ΚΑΤΑΣΤΑΣΗΣ'), 'g'), ...A},                // Ημερομηνία Κατάστασης (κάρτες)
+    {re:new RegExp(HM + L('ΑΝΑΚΕΦΑΛΑΙΩΣΗΣ'), 'g'), ...A},
     {re:/ISSUE\s?DATE/g, ...A}, {re:/DATE\s?OF\s?ISSUE/g, ...A}, {re:/INVOICE\s?DATE/g, ...A},
     // «ΕΚΔΟΣΗΣ» μόνη της (π.χ. όταν το OCR διάβασε λάθος το «Ημερομηνία»): μόνο ημερομηνία ΑΜΕΣΩΣ μετά
     {re:new RegExp(L('ΕΚΔΟΣΗΣ'), 'g'), after:30, before:0},
@@ -2501,12 +2518,13 @@ async function commitStaging(){
     /* αυτόματη εξαγωγή στοιχείων */
     try{
       setProgress(Math.round((gi/groupList.length)*85),`Ανάγνωση στοιχείων: ${rec.category} ${rec.month}/${rec.year}…`);
+      const _snap={amount:rec.amount,paidDate:rec.paidDate||null,issueDate:rec.issueDate||null,dueDate:rec.dueDate||null};
       const didExtract=await extractAndApplyAllInfo(rec);
       if(didExtract) extractCount++;
       /* ενιαία αυτόματη ανάγνωση (ίδια μηχανή με το κεντρικό κουμπί): συμπληρώνει ΜΟΝΟ κενά πεδία με επαληθευμένες τιμές */
       try{
         setProgress(Math.round((gi/groupList.length)*85),`Αυτόματη ανάγνωση πεδίων: ${rec.category} ${rec.month}/${rec.year}…`);
-        const n = await autoFillOnImport(rec);
+        const n = await autoFillOnImport(rec, _snap);
         if(n) autoFilled += n;
       }catch(e){ console.warn('Auto read on import failed', rec.category, e); }
     }catch(e){ console.warn('Auto-extract failed',rec.category,e); }
@@ -3423,6 +3441,16 @@ function extractBillAmount(rawText){
     L('ΣΥΝΟΛΟ')+'\\s?'+L('ΠΛΗΡΩΜΗΣ'),
     L('ΣΥΝΟΛΙΚΟ')+'\\s?'+L('ΠΟΣΟ'),
     L('ΠΛΗΡΩΤΕΟ'),
+    L('ΠΟΣΟ')+'\\s?'+L('ΠΡΟΣ')+'\\s?'+L('ΠΛΗΡΩΜΗ'),
+    L('ΣΥΝΟΛΟ')+'\\s?'+L('ΠΡΟΣ')+'\\s?'+L('ΠΛΗΡΩΜΗ'),
+    L('ΠΡΟΣ')+'\\s?'+L('ΠΛΗΡΩΜΗ'),
+    L('ΣΥΝΟΛΙΚΟ')+'\\s?'+L('ΟΦΕΙΛΟΜΕΝΟ'),
+    L('ΟΦΕΙΛΟΜΕΝΟ')+'\\s?'+L('ΠΟΣΟ'),
+    L('ΣΥΝΟΛΙΚΟ')+'\\s?'+L('ΥΠΟΛΟΙΠΟ'),
+    L('ΣΥΝΟΛΙΚΗ')+'\\s?'+L('ΧΡΕΩΣΗ'),
+    L('ΣΥΝΟΛΟ')+'\\s?'+L('ΧΡΕΩΣΕΩΝ'),
+    L('ΣΥΝΟΛΟ')+'\\s?'+L('ΛΟΓΑΡΙΑΣΜΟΥ'),
+    L('ΠΟΣΟ')+'\\s?'+L('ΕΞΟΦΛΗΣΗΣ'),
   ];
   const amtRe = /(\d{1,3}(?:\.\d{3})*,\d{2})/;
   for(const l of labels){
@@ -3469,7 +3497,7 @@ function _isDueLabelWord(t){
 function _dueFromText(text, y, m){
   try{
     const n = _issueNorm(text);
-    const re = /(?:ΗΜ[\/.]?\s?ΝΙΑ\s*ΛΗΞΗΣ|ΗΜΕΡΟΜΗΝΙΑ\s*ΛΗΞΗΣ|ΛΗΞΕΩΣ|ΕΞΟΦΛΗΣΗ\s*(?:ΕΩΣ|ΜΕΧΡΙ)?|ΠΛΗΡΩΤΕΟ\s*(?:ΕΩΣ|ΜΕΧΡΙ)|ΕΜΠΡΟΘΕΣΜΗ(?:\s*ΠΡΟΘΕΣΜΙΑ)?)[^0-9]{0,25}(\d{1,2})[\/.\-](\d{1,2})[\/.\-](\d{4})/g;
+    const re = /(?:ΗΜ[\/.]?\s?ΝΙΑ\s*ΛΗΞΗΣ|ΗΜΕΡΟΜΗΝΙΑ\s*ΛΗΞΗΣ|ΛΗΞΕΩΣ|ΕΞΟΦΛΗΣΗ\s*(?:ΕΩΣ|ΜΕΧΡΙ)?|ΠΛΗΡΩΤΕΟ\s*(?:ΕΩΣ|ΜΕΧΡΙ)|ΕΜΠΡΟΘΕΣΜΗ(?:\s*ΠΡΟΘΕΣΜΙΑ)?|ΠΡΟΘΕΣΜΙΑ\s*(?:ΠΛΗΡΩΜΗΣ|ΕΞΟΦΛΗΣΗΣ)|ΗΜ[\/.]?\s?ΝΙΑ\s*(?:ΠΛΗΡΩΜΗΣ|ΕΞΟΦΛΗΣΗΣ)|ΗΜΕΡΟΜΗΝΙΑ\s*(?:ΠΛΗΡΩΜΗΣ|ΕΞΟΦΛΗΣΗΣ)|ΠΛΗΡΩΜΗ\s*(?:ΕΩΣ|ΜΕΧΡΙ)|ΝΑ\s*ΠΛΗΡΩΘΕΙ\s*(?:ΕΩΣ|ΜΕΧΡΙ)|ΜΕΧΡΙ\s*ΤΙΣ)[^0-9]{0,25}(\d{1,2})[\/.\-](\d{1,2})[\/.\-](\d{4})/g;
     for(const mm of n.matchAll(re)){
       const iso = _mkIso(+mm[3], +mm[2], +mm[1]); const ok = iso && dueSane(iso, y, m); if(ok) return ok;
     }
@@ -3477,6 +3505,37 @@ function _dueFromText(text, y, m){
   }catch(e){ return null; }
 }
 const _rep = (v, n) => Array(n).fill(v);
+
+/* Ποσό/ημερομηνία από απόδειξη, ΑΓΚΥΡΩΜΕΝΑ δίπλα στην ετικέτα (το κείμενο PDF είναι μία γραμμή ανά σελίδα,
+   οπότε η «πρώτη ημερομηνία/ποσό της γραμμής» δεν αρκεί). */
+function _anchoredAfter(text, labelRes, valueRe, maxGap, reject){
+  const n = _issueNorm(text);
+  for(const lr of labelRes){
+    for(const m of n.matchAll(new RegExp(lr,'g'))){
+      const after = n.slice(m.index + m[0].length, m.index + m[0].length + maxGap);
+      const v = valueRe.exec(after);
+      if(v && !(reject && reject.test(n.slice(Math.max(0,m.index-12), m.index + m[0].length)))) return v;
+    }
+  }
+  return null;
+}
+function receiptAnchoredAmount(text){
+  const L = w => w.split('').join('\\s?');
+  const labels = [L('ΠΟΣΟ')+'\\s?'+L('ΠΛΗΡΩΜΗΣ'), L('ΣΥΝΟΛΙΚΟ')+'\\s?'+L('ΠΟΣΟ'), L('ΠΟΣΟ')+'\\s?'+L('ΣΥΝΑΛΛΑΓΗΣ'), L('ΠΟΣΟ')+'\\s?'+L('ΕΞΟΦΛΗΣΗΣ'),
+                  L('ΠΛΗΡΩΘΗΚΕ')+'[^0-9]{0,10}', L('ΠΛΗΡΩΤΕΟ')+'\\s?'+L('ΠΟΣΟ'), L('ΣΥΝΟΛΟ'), L('AMOUNT'), L('ΠΟΣΟ')];
+  const v = _anchoredAfter(text, labels, /(\d{1,3}(?:\.\d{3})*,\d{2})/, 45, /ΕΛΑΧΙΣΤ|ΠΡΟΜΗΘ/);
+  if(!v) return null;
+  const n = parseGreekNumber(v[1]); return (n!==null && n>0 && n<100000) ? n : null;
+}
+function receiptAnchoredDate(text){
+  const L = w => w.split('').join('\\s?');
+  const labels = [L('ΗΜΕΡΟΜΗΝΙΑ')+'\\s?'+L('ΠΛΗΡΩΜΗΣ'), L('ΗΜ/ΝΙΑ')+'\\s?'+L('ΠΛΗΡΩΜΗΣ'), L('ΗΜΕΡΟΜΗΝΙΑ')+'\\s?'+L('ΣΥΝΑΛΛΑΓΗΣ'), L('ΗΜ/ΝΙΑ')+'\\s?'+L('ΣΥΝΑΛΛΑΓΗΣ'),
+                  L('ΧΡΟΝΟΣΦΡΑΓΙΔΑ'), L('ΗΜΕΡΟΜΗΝΙΑ')+'\\s?'+L('ΕΚΤΕΛΕΣΗΣ'), L('ΠΛΗΡΩΜΗ')+'\\s?'+L('ΣΤΙΣ'), L('ΠΛΗΡΩΘΗΚΕ')+'\\s?'+L('ΣΤΙΣ'), L('DATE')];
+  const v = _anchoredAfter(text, labels, /(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{4})/, 40, /ΛΗΞ|ΕΚΔΟΣ/);
+  if(!v) return null;
+  return _mkIso(+v[3], +v[2], +v[1]);
+}
+
 
 /* cur = {houseId, year, month, category, amount, paidDate, issueDate, dueDate} (τρέχουσες τιμές φόρμας)
    → { fields:{house,category,year,month,amount,paidDate,issueDate,dueDate,status}, notes:[], usedOcr }
@@ -3570,7 +3629,11 @@ async function autoReadBill(bill, cur, opts={}){
     }
   }
   const wr = rOcr ? 1 : 2;
-  const recInfo = rTexts.map(t=>{ try{ return extractPaymentInfo(t); }catch(e){ return {amount:null,paidDate:null}; } });
+  const recInfo = rTexts.map(t=>{
+    let leg = {amount:null,paidDate:null}; try{ leg = extractPaymentInfo(t); }catch(e){}
+    let a=null, d=null; try{ a = receiptAnchoredAmount(t); d = receiptAnchoredDate(t); }catch(e){}
+    return { amount: a!==null ? a : leg.amount, paidDate: d || leg.paidDate };   // προτεραιότητα στην ανάγνωση δίπλα στην ετικέτα
+  });
   // ημερομηνία πληρωμής
   if(recBlob){
     const pv = voteValues(recInfo.flatMap(i=>_rep(i.paidDate ? paidSane(i.paidDate, cur.year, cur.month, issue.value) : null, wr)));
@@ -3608,6 +3671,7 @@ async function autoReadBill(bill, cur, opts={}){
     F.dueDate = Object.assign({}, F.dueDate, {verified:false}); F.issueDate = Object.assign({}, F.issueDate, {verified:false});
     out.notes.push('Η λήξη βγήκε πριν την έκδοση — ελέγξτε τις δύο ημερομηνίες.');
   }
+  out.debug = { bill:(bTexts[0]||'').slice(0,2500), receipt:(rTexts[0]||'').slice(0,1500), ocr:{bill:bOcr, receipt:rOcr} };
   return out;
 }
 
@@ -3682,8 +3746,16 @@ function renderAutoReview(res, plan, cur){
     <table class="auto-table"><thead><tr><th>Πεδίο</th><th>Πριν</th><th>Διαβάστηκε</th><th>Ενέργεια</th></tr></thead><tbody>${rows}</tbody></table>
     ${statusLine}
     ${res.notes.map(n=>`<div class="sg-warn">${escapeHtml(n)}</div>`).join('')}
+    <div style="margin-top:8px;"><button type="button" class="btn btn-sm" id="autoDiagBtn">📋 Αντιγραφή διάγνωσης (για αναφορά προβλήματος)</button></div>
     <div class="sg-foot">Οι αλλαγές είναι μόνο στη φόρμα — δεν αποθηκεύονται μέχρι να πατήσετε «Αποθήκευση». Οι τιμές θεωρούνται «επαληθευμένες» όταν συμφωνούν πολλαπλές αναγνώσεις ή/και λογαριασμός και απόδειξη.</div>`;
   box.removeAttribute('hidden');
+  const diag = document.getElementById('autoDiagBtn');
+  if(diag) diag.onclick = async ()=>{
+    const txt = 'ΔΙΑΓΝΩΣΗ ΑΝΑΓΝΩΣΗΣ\n' + AUTO_ORDER.map(k=>`${AUTO_FIELD_LABELS[k]}: πριν=${cur[k==='house'?'houseId':k]??''} | διαβάστηκε=${res.fields[k]&&res.fields[k].value!==null?res.fields[k].value:'—'} | ${plan[k]}`).join('\n')
+      + '\n\n--- ΚΕΙΜΕΝΟ ΛΟΓΑΡΙΑΣΜΟΥ ---\n' + (res.debug?res.debug.bill:'') + '\n\n--- ΚΕΙΜΕΝΟ ΑΠΟΔΕΙΞΗΣ ---\n' + (res.debug?res.debug.receipt:'');
+    try{ await navigator.clipboard.writeText(txt); toast('Η διάγνωση αντιγράφηκε — κάντε επικόλληση στη συνομιλία.','success'); }
+    catch(e){ window.prompt('Αντιγράψτε (Ctrl+C):', txt.slice(0,4000)); }
+  };
   const undo = document.getElementById('autoUndoBtn');
   if(undo) undo.onclick = ()=>{
     if(!_autoUndo) return;
@@ -3736,8 +3808,10 @@ async function runAutoRead(id){
 
 /* ---------- Μαζική εκτέλεση ---------- */
 /* Αυτόματη ανάγνωση κατά την εισαγωγή: χωρίς OCR (αργό)· αν το PDF είναι εικόνα μένει για τη μαζική ανάγνωση. */
-async function autoFillOnImport(rec){
-  const cur = { houseId:rec.houseId, house:rec.houseId, year:rec.year, month:rec.month, category:rec.category, amount:rec.amount, paidDate:rec.paidDate||null, issueDate:rec.issueDate||null, dueDate:rec.dueDate||null };
+async function autoFillOnImport(rec, snap){
+  /* snap = τιμές ΠΡΙΝ την παλιά ανάγνωση: ό,τι έβαλε η παλιά ανάγνωση (όχι ο χρήστης) μπορεί να διορθωθεί από την ακριβέστερη μηχανή */
+  const base = snap || { amount:rec.amount, paidDate:rec.paidDate||null, issueDate:rec.issueDate||null, dueDate:rec.dueDate||null };
+  const cur = { houseId:rec.houseId, house:rec.houseId, year:rec.year, month:rec.month, category:rec.category, amount:base.amount, paidDate:base.paidDate, issueDate:base.issueDate, dueDate:base.dueDate };
   const res = await autoReadBill(rec, cur, { allowOcr:false });
   const plan = planAutoApply(res.fields, cur, 'bulk');
   let n = 0;
@@ -3921,7 +3995,7 @@ function openBillModal(id, opts={}){
         <input type="date" id="f_issueDate" value="${bill.issueDate||''}">
       </div>
       <div class="field">
-        <label>Ημ/νία λήξης <span class="muted small">(προαιρετική για εξοφληθέντες)</span></label>
+        <label>Ημ/νία λήξης</label>
         <input type="date" id="f_dueDate" value="${bill.dueDate||''}">
       </div>
     </div>
