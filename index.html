@@ -960,7 +960,7 @@ window.Predictor = (function(){
     const gaps=[], issueOff=[], dueOff=[], periodSet=new Set();
     items.forEach(b=>{
       const i=parseISO(b.issueDate), d=parseISO(b.dueDate), p=periodAbs(b);
-      if(i && d){ const g=daysBetween(i,d); if(g>=0 && g<=120) gaps.push(g); }
+      if(i && d){ const g=daysBetween(i,d); if(g>=1 && g<=120) gaps.push(g); /* έκδοση = λήξη (ίδια μέρα): λάθος καταχώρηση, αγνοείται */ }
       if(p!=null){
         periodSet.add(p);
         if(i) issueOff.push(monthAbs(i)-p);
@@ -998,6 +998,9 @@ window.Predictor = (function(){
     const gap = st.gap!=null ? st.gap : DEFAULT_GAP_DAYS;
     if(!issue && due){ issue=addDays(due,-gap); assumed = st.gap==null; }
     else if(issue && !due){ due=addDays(issue,gap); assumed = st.gap==null; }
+    if(issue && due && daysBetween(issue,due) < 1){      // η έκδοση δεν μπορεί να είναι ίδια ή μετά τη λήξη
+      issue = addDays(due, -(st.gap!=null ? st.gap : DEFAULT_GAP_DAYS)); assumed = st.gap==null;
+    }
     return {issue, due, assumed};
   }
 
