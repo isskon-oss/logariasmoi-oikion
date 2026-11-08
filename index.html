@@ -607,6 +607,9 @@ tr.stage-sel td{ background:#222a5c !important; }
 .file-upload,.drop-zone{ background:rgba(255,255,255,.03); }
 .doc-frame{ background:#2a2d3f; }
 ::selection{ background:#5b6cf0; color:#fff; }
+.cat-picker{ display:flex; flex-direction:column; gap:6px; width:100%; }
+.cat-picker select,.cat-picker input{ width:100%; }
+.cat-picker input[hidden]{ display:none; }
 .grp-actions{ display:inline-flex; gap:4px; margin-left:8px; flex:none; }
 .grp-btn{ border:1px solid var(--line-strong); background:#212654; color:var(--ink); border-radius:7px; padding:2px 7px; font-size:12px; cursor:pointer; line-height:1.3; }
 .grp-btn:hover{ border-color:#8fa8ff; background:#2a3068; }
@@ -813,6 +816,11 @@ tr.stage-sel td{ background:#222a5c !important; }
           <input type="text" id="newHouseInput" placeholder="Όνομα νέας οικίας (π.χ. Κομνηνών 27)">
           <button class="btn btn-sm" id="addHouseBtn">➕ Προσθήκη</button>
         </div>
+
+        <div class="section-title">Έλεγχος αρχείων PDF</div>
+        <div class="note-box">Βρίσκει λογαριασμούς των οποίων το PDF λείπει ή δεν διαβάζεται, χωρίς να τους ψάχνετε έναν-έναν.</div>
+        <button class="btn btn-sm" id="checkFilesBtn" type="button">🔍 Έλεγχος αρχείων όλων των λογαριασμών</button>
+        <div id="checkFilesResult" style="margin-top:10px;"></div>
 
         <div class="section-title">Υπενθυμίσεις πληρωμών μέσω Email</div>
         <div class="note-box">
@@ -1425,7 +1433,21 @@ const DB = {
     const os = await tx(store,'readonly');
     return reqToPromise(os.get(id));
   },
+  /* Ένα File του browser είναι ΑΝΑΦΟΡΑ στο αρχείο του δίσκου (μετακίνηση/μετονομασία → χάνεται).
+     Πριν από κάθε αποθήκευση το αντιγράφουμε σε αυτόνομο Blob μέσα στη μνήμη/βάση. */
+  async detach(value){
+    if(!value || typeof value!=='object') return value;
+    for(const k of Object.keys(value)){
+      const v = value[k];
+      if(typeof File!=='undefined' && v instanceof File){
+        try{ value[k] = new Blob([await v.arrayBuffer()], {type: v.type || 'application/pdf'}); }
+        catch(e){ console.error('Could not read file reference for', k, e); throw new Error('Το αρχείο δεν είναι πλέον προσβάσιμο στον δίσκο (μετακινήθηκε ή μετονομάστηκε). Επιλέξτε το ξανά.'); }
+      }
+    }
+    return value;
+  },
   async put(store, value, opts){
+    await DB.detach(value);
     const os = await tx(store,'readwrite');
     const result = await reqToPromise(os.put(value));
     if(!(opts && opts.skipCloud)) Cloud.push(store, value);
@@ -2326,7 +2348,12 @@ async function expandZips(rawItems){
           out.push({name:fname,blob,folderSegs:item.folderSegs.concat(segs)});
         }
       }catch(e){ console.error('ZIP',item.name,e); toast(`Αποτυχία ZIP: ${item.name}`,'error'); }
-    } else if(/\.pdf$/i.test(item.name)) out.push(item);
+    } else if(/\.pdf$/i.test(item.name)){
+      /* Το File του browser είναι ΑΝΑΦΟΡΑ στο αρχείο του δίσκου· αν μετακινηθεί/μετονομαστεί πριν την αποθήκευση, χάνεται.
+         Το αντιγράφουμε αμέσως στη μνήμη ώστε να μη εξαρτάται από τον δίσκο. */
+      try{ const buf = await item.blob.arrayBuffer(); out.push({ ...item, blob:new Blob([buf],{type:'application/pdf'}) }); }
+      catch(e){ console.error('Read file', item.name, e); toast(`Δεν διαβάστηκε το αρχείο ${item.name} (μετακινήθηκε ή είναι κλειδωμένο;)`,'error',8000); }
+    }
   }
   return out;
 }
@@ -2391,7 +2418,7 @@ function renderStagingTable(){
       <td class="fname-cell" title="${escapeHtml(item.rawName)}${item.folderPath?' — '+escapeHtml(item.folderPath):''}">${escapeHtml(item.rawName)}</td>
       <td><input type="number" class="st-year"  value="${item.year}"  min="1990" max="2100" style="width:64px"></td>
       <td><input type="number" class="st-month" value="${item.month}" min="1"    max="12"   style="width:50px"></td>
-      <td><input type="text"   class="st-category" value="${escapeHtml(item.category)}" placeholder="π.χ. ΔΕΗ"></td>
+      <td>${catPickerHtml(item.category, 'st-catsel', 'st-category', null)}</td>
       <td>
         <select class="st-kind">
           <option value="combined" ${item.kind==='combined'?'selected':''}>🗂️ Συνδυασμένο</option>
@@ -2426,7 +2453,9 @@ function wireStagingRowEvents(){
     tr.querySelector('.st-include').onchange=e=>{ item.include=e.target.checked; };
     tr.querySelector('.st-year').oninput=e=>{ item.year=parseInt(e.target.value,10)||item.year; markReviewed(item,tr); };
     tr.querySelector('.st-month').oninput=e=>{ item.month=parseInt(e.target.value,10)||item.month; markReviewed(item,tr); };
-    tr.querySelector('.st-category').oninput=e=>{ item.category=e.target.value.trim(); markReviewed(item,tr); };
+    { const cs=tr.querySelector('.st-catsel'), ci=tr.querySelector('.st-category');
+      ci.oninput=e=>{ item.category=e.target.value.trim(); markReviewed(item,tr); };
+      wireCatPicker(cs, ci, v=>{ item.category=v; markReviewed(item,tr); }); }
     tr.querySelector('.st-kind').onchange=e=>{ item.kind=e.target.value; renderStagingTable(); };
     tr.querySelector('.st-house').onchange=e=>{ item.houseId=e.target.value; };
     const splitN=tr.querySelector('.st-splitN');
@@ -2715,6 +2744,42 @@ function renderStatCards(){
       <div class="value">${stats.needsSplit}</div>
       <div class="sub">λογαριασμός + απόδειξη ενωμένα</div>
     </div>`;
+}
+
+
+/* ---------- Επιλογέας κατηγορίας: μενού με υπάρχουσες + «➕ Νέα…» ---------- */
+const CAT_NEW = '__new__';
+function knownCategories(extra){
+  const set = new Set(STATE.bills.map(b=>String(b.category||'').trim()).filter(Boolean));
+  if(extra) set.add(String(extra).trim());
+  return uniqueSorted(Array.from(set));
+}
+function catPickerHtml(value, selClass, inputClass, inputId){
+  const v = String(value||'').trim();
+  const cats = knownCategories(null);
+  const inList = cats.includes(v);
+  const isNew = !inList;      // κενή ή άγνωστη τιμή → εμφανίζεται το πεδίο κειμένου
+  const opts = (v==='' ? '<option value="" selected disabled>— Επιλογή —</option>' : '')
+    + cats.map(c=>`<option value="${escapeHtml(c)}" ${c===v?'selected':''}>${escapeHtml(c)}</option>`).join('')
+    + `<option value="${CAT_NEW}" ${isNew && v!==''?'selected':''}>➕ Νέα κατηγορία…</option>`;
+  return `<div class="cat-picker"><select class="${selClass}">${opts}</select><input type="text" class="${inputClass}" ${inputId?`id="${inputId}"`:''} value="${escapeHtml(v)}" placeholder="Νέα κατηγορία (π.χ. ΔΕΗ)" ${isNew?'':'hidden'}></div>`;
+}
+/* sel/input: τα δύο στοιχεία· onChange(value) καλείται όταν αλλάζει η τιμή */
+function wireCatPicker(sel, inp, onChange){
+  sel.addEventListener('change', ()=>{
+    if(sel.value===CAT_NEW){ inp.hidden = false; inp.value = ''; inp.focus(); }
+    else { inp.hidden = true; inp.value = sel.value; inp.dispatchEvent(new Event('input',{bubbles:true})); }
+    if(onChange) onChange(inp.value.trim());
+  });
+  const syncFromInput = ()=>{       // π.χ. όταν η αυτόματη ανάγνωση ή ο χρήστης αλλάζει το κείμενο
+    const v = inp.value.trim();
+    const opt = Array.from(sel.options).find(o=>o.value===v && o.value!==CAT_NEW);
+    if(opt && inp.hidden){ sel.value = v; }
+    else if(opt){ sel.value = v; inp.hidden = true; }
+  };
+  inp.addEventListener('input', ()=>{ syncFromInput(); });
+  inp.addEventListener('change', ()=>{ syncFromInput(); });
+  inp.addEventListener('input', ()=>{ if(!inp.hidden && onChange) onChange(inp.value.trim()); });
 }
 
 function uniqueSorted(arr){ return Array.from(new Set(arr)).sort((a,b)=>a.toString().localeCompare(b.toString(),'el')); }
@@ -3747,6 +3812,7 @@ function _fmtAuto(key, v){
 function _setFormValue(key, v){
   const el = document.getElementById(AUTO_INPUT_ID[key]); if(!el) return;
   el.value = (key==='amount') ? Number(v).toFixed(2) : String(v);
+  if(key==='category'){ const cs=document.querySelector('.f-catsel'); if(cs){ const has=Array.from(cs.options).some(o=>o.value===String(v)&&o.value!==CAT_NEW); if(has){ cs.value=String(v); el.hidden=true; } else { cs.value=CAT_NEW; el.hidden=false; } } }
   el.dispatchEvent(new Event('input',{bubbles:true})); el.dispatchEvent(new Event('change',{bubbles:true}));
 }
 function _readFormCur(){
@@ -3906,6 +3972,7 @@ async function bulkAutoRead(){
 
 
 function wireDateSuggestions(billId){
+  { const cs=document.querySelector('.f-catsel'), ci=document.getElementById('f_category'); if(cs && ci) wireCatPicker(cs, ci, null); }
   ['f_house','f_year','f_month','f_category','f_issueDate','f_dueDate'].forEach(id=>{
     const el = document.getElementById(id);
     if(!el) return;
@@ -3956,6 +4023,41 @@ function renderAll(){
 /* ============================================================
    06. Modals — bill detail/edit, split, doc viewer
    ============================================================ */
+
+/* ---------- Έλεγχος αρχείων: ποιοι λογαριασμοί έχουν χάσει το PDF τους ---------- */
+async function findBillsWithMissingFiles(onProgress){
+  const roles = [['billBlob','billName','Λογαριασμός'],['paymentBlob','paymentName','Απόδειξη'],['combinedBlob','combinedName','Πρωτότυπο']];
+  const out = [];
+  for(let i=0;i<STATE.bills.length;i++){
+    const b = STATE.bills[i]; const problems = [];
+    if(onProgress && i%10===0) onProgress(i, STATE.bills.length);
+    for(const [bk, nk, label] of roles){
+      const blob = b[bk];
+      if(!blob){ if(b[nk]) problems.push(`${label}: λείπει (${b[nk]})`); continue; }
+      try{ const buf = await blob.slice(0, 8).arrayBuffer(); if(!buf.byteLength || blob.size===0) problems.push(`${label}: κενό αρχείο`); }
+      catch(e){ problems.push(`${label}: μη αναγνώσιμο`); }
+    }
+    if(problems.length) out.push({ bill:b, problems });
+  }
+  return out;
+}
+async function runCheckFiles(){
+  const btn = document.getElementById('checkFilesBtn'), box = document.getElementById('checkFilesResult');
+  btn.disabled = true; box.textContent = 'Έλεγχος…';
+  try{
+    const bad = await findBillsWithMissingFiles((i,n)=>{ box.textContent = `Έλεγχος ${i}/${n}…`; });
+    if(!bad.length){ box.innerHTML = `<div class="note-box">✅ Όλα τα αρχεία (${STATE.bills.length} λογαριασμοί) είναι εντάξει.</div>`; return; }
+    bad.sort((a,b)=> (b.bill.year*12+b.bill.month)-(a.bill.year*12+a.bill.month));
+    box.innerHTML = `<div class="note-box warn">⚠ ${bad.length} λογαριασμοί με πρόβλημα αρχείου. Πατήστε «Άνοιγμα» και επισυνάψτε ξανά το PDF.</div>`
+      + `<table class="auto-table"><thead><tr><th>Περίοδος</th><th>Οικία</th><th>Κατηγορία</th><th>Πρόβλημα</th><th></th></tr></thead><tbody>`
+      + bad.map(x=>`<tr><td>${monthName(x.bill.month)} ${x.bill.year}</td><td>${escapeHtml(houseName(x.bill.houseId))}</td><td>${escapeHtml(x.bill.category)}</td><td>${x.problems.map(escapeHtml).join('<br>')}</td><td><button type="button" class="btn btn-sm" data-open-bill="${escapeHtml(String(x.bill.id))}">Άνοιγμα</button></td></tr>`).join('')
+      + `</tbody></table>`;
+    box.querySelectorAll('[data-open-bill]').forEach(bt=>{ bt.onclick = ()=>{ closeModal('settingsModal'); openBillModal(bt.dataset.openBill); }; });
+  }catch(e){ console.error('File check failed', e); box.textContent = 'Σφάλμα ελέγχου: ' + (e && e.message ? e.message : e); }
+  finally{ btn.disabled = false; }
+}
+document.addEventListener('click', e=>{ if(e.target && e.target.id==='checkFilesBtn') runCheckFiles(); });
+
 function openModal(id){ document.getElementById(id).removeAttribute('hidden'); }
 function closeModal(id){ document.getElementById(id).setAttribute('hidden',''); revokeAllObjectUrls(); }
 // Overlay click does NOT close modal (prevent accidental data loss)
@@ -4003,7 +4105,7 @@ function openBillModal(id, opts={}){
       <div class="field"><label>Έτος</label><input type="number" id="f_year" value="${bill.year}" min="1990" max="2100"></div>
       <div class="field"><label>Μήνας</label><select id="f_month">${monthOptions}</select></div>
     </div>
-    <div class="field"><label>Κατηγορία</label><input type="text" id="f_category" value="${escapeHtml(bill.category)}"></div>
+    <div class="field"><label>Κατηγορία</label>${catPickerHtml(bill.category, 'f-catsel', 'f-catinp', 'f_category')}</div>
 
     ${extractedBanner}
 
