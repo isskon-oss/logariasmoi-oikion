@@ -2264,7 +2264,7 @@ async function extractAndApplyAllInfo(bill){
 
   /* ---- «κρυφό κείμενο»: κρατάμε το κείμενο των αρχικών PDF δίπλα στον λογαριασμό (λίγα KB),
          ώστε η ανάγνωση να δουλεύει και αφού το PDF συμπιεστεί/γίνει εικόνα στο cloud ---- */
-  const _keepTxt = t => { const x = (t||'').replace(/[ \t]+/g,' ').trim(); return x.replace(/\s/g,'').length >= 30 ? x.slice(0, 12000) : null; };
+  const _keepTxt = t => { const x = (t||'').replace(/[ \t]+/g,' ').trim(); return textIsUsable(x) ? x.slice(0, 12000) : null; };
   const tb = _keepTxt(billText), tp = _keepTxt(payText);
   if(tb) bill.textBill = tb; else delete bill.textBill;
   if(tp) bill.textPay = tp; else delete bill.textPay;
@@ -3278,7 +3278,7 @@ async function ocrIssueDate(blob, billYear, billMonth, dueISO, maxPages=2){
 async function readIssueDateFromPdf(blob, billYear, billMonth, dueISO){
   let text = '';
   try{ text = await extractTextFromPdfBlob(blob); }catch(e){ console.warn('PDF text extraction failed', e); }
-  if(text.replace(/\s+/g,'').length >= 30){
+  if(textIsUsable(text)){
     const iso = extractIssueDate(text, billYear, billMonth, dueISO);
     return { iso, ocr:false, verified:!!iso, text, reads:[] };
   }
@@ -3294,7 +3294,7 @@ async function readIssueDateFromPdf(blob, billYear, billMonth, dueISO){
 async function getBillTextForIssue(blob){
   let text = '';
   try{ text = await extractTextFromPdfBlob(blob); }catch(e){ console.warn('PDF text extraction failed', e); }
-  if(text.replace(/\s+/g,'').length >= 30) return { text, ocr:false };
+  if(textIsUsable(text)) return { text, ocr:false };
   return { text: await ocrPdfBlob(blob), ocr:true };
 }
 /* Επαλήθευση OCR: το κείμενο που διαβάστηκε πρέπει να περιέχει την ΗΔΗ γνωστή ημερομηνία λήξης του λογαριασμού */
@@ -3437,7 +3437,7 @@ const CATEGORY_KEYWORDS = [
   { name:'ΔΕΗ',          re:/(^|[^Α-Ω])ΔΕΗ([^Α-Ω]|$)|ΔΗΜΟΣΙΑ ΕΠΙΧΕΙΡΗΣΗ ΗΛΕΚΤΡΙΣΜΟΥ/ },
   { name:'ΕΥΔΑΠ',        re:/(^|[^Α-Ω])ΕΥΔΑΠ([^Α-Ω]|$)/ },
   { name:'ΕΥΑΘ',         re:/(^|[^Α-Ω])ΕΥΑΘ([^Α-Ω]|$)/ },
-  { name:'Κοινόχρηστα',  re:/ΚΟΙΝΟΧΡΗΣΤ|CASA ?CARE/ },
+  { name:'Κοινόχρηστα',  re:/ΚΟΙΝΟΧΡΗΣΤ|CASA ?CARE|ΕΙΔΟΠΟΙΗΤΗΡΙΟ\s*ΔΙΑΜΕΡΙΣΜ/ },
   { name:'Φυσικό Αέριο', re:/ΦΥΣΙΚΟ ΑΕΡΙΟ|(^|[^Α-Ω])ΔΕΠΑ([^Α-Ω]|$)|ΕΔΑ ΑΤΤΙΚΗΣ|ΕΤΑΙΡΕΙΑ ΠΑΡΟΧΗΣ ΑΕΡΙΟΥ/ },
   { name:'COSMOTE',      re:/COSMOTE|ΚΟΣΜΟΤΕ/ },
   { name:'Vodafone',     re:/VODAFONE|ΒΟΝΤΑΦΟΝ/ },
@@ -3492,6 +3492,10 @@ function detectExpenseMonth(rawText){
     const m = t.match(re);
     if(m) return { month:i+1, year:m[1]?parseInt(m[1],10):null };
   }
+  /* εφεδρικά (σαρωμένα ειδοποιητήρια, θόρυβος OCR ανάμεσα στην ετικέτα και τον μήνα): μοναδικό «ΜΗΝΑΣ ΕΤΟΣ» στο κείμενο */
+  const found = new Set();
+  for(let i=0;i<12;i++){ const re = new RegExp('(?:^|[^Α-Ω])(?:'+MONTH_STEMS[i]+')[Α-Ω]{0,4}\\s?(20\\d{2})','g'); for(const m of t.matchAll(re)) found.add((i+1)+'-'+m[1]); }
+  if(found.size===1 && /ΕΙΔΟΠΟΙΗΤΗΡΙΟ|ΔΙΑΜΕΡΙΣΜΑΤΟΣ|ΚΟΙΝΟΧΡΗΣΤ/.test(t)){ const [mo,yr]=[...found][0].split('-'); return { month:parseInt(mo,10), year:parseInt(yr,10) }; }
   return null;
 }
 
@@ -3569,7 +3573,99 @@ function _dueFromText(text, y, m){
     return dueSane(extractDueDate(text, y, m), y, m);
   }catch(e){ return null; }
 }
+/* ---------- Ειδοποιητήριο διαμερίσματος (σαρωμένο): πλαίσιο «ΠΟΣΟ ΠΟΥ ΠΡΕΠΕΙ ΝΑ ΠΛΗΡΩΣΕΙ» ----------
+   Το γενικό OCR δεν διαβάζει τα έντονα ψηφία πάνω σε έγχρωμο φόντο. Εδώ βρίσκουμε τα κελιά του πίνακα (γραμμές),
+   διαβάζουμε κάθε κελί χωριστά και ζητάμε  ΕΝΟΙΚΟΣ + ΙΔΙΟΚΤΗΤΗΣ = ΣΥΝΟΛΟ  (άθροισμα-έλεγχος) ώστε το ποσό να είναι επαληθευμένο. */
+function findSumTriple(nums){
+  const v = (nums||[]).filter(x=>typeof x==='number' && isFinite(x) && x>0 && x<100000);
+  for(let i=0;i<v.length;i++) for(let j=0;j<v.length;j++){
+    if(i===j) continue;
+    for(let k=0;k<v.length;k++){
+      if(k===i || k===j) continue;
+      if(v[k] > v[i] && v[k] > v[j] && Math.abs(v[i]+v[j]-v[k]) < 0.015 && i<j) return { parts:[v[i],v[j]], total:v[k] };
+    }
+  }
+  return null;
+}
+function _numsFromText(t){
+  const out=[]; for(const m of String(t||'').matchAll(/\d{1,3}(?:\.\d{3})*,\d{2}/g)){ const n=parseGreekNumber(m[0]); if(n!==null) out.push(n); } return out;
+}
+function _ocrTableCells(reg){
+  const W=reg.width, H=reg.height, d=reg.getContext('2d').getImageData(0,0,W,H).data, g=new Uint8Array(W*H);
+  for(let i=0,j=0;i<d.length;i+=4,j++) g[j]=(0.3*d[i]+0.59*d[i+1]+0.11*d[i+2])|0;
+  let mean=0, cnt=0; for(let i=0;i<g.length;i+=7){ mean+=g[i]; cnt++; } mean/=cnt;
+  const T=Math.min(110, mean*0.55);
+  const runs=(arr,thr)=>{ const o=[]; let i=0; while(i<arr.length){ if(arr[i]>thr){ let j=i; while(j<arr.length&&arr[j]>thr) j++; o.push([i,j]); i=j; } else i++; } return o; };
+  const rowDark=new Float32Array(H);
+  for(let y=0;y<H;y++){ let n=0; for(let x=0;x<W;x++) if(g[y*W+x]<T) n++; rowDark[y]=n/W; }
+  const hl=runs(rowDark,0.4); hl.unshift([0,0]); hl.push([H,H]);
+  const cells=[];
+  for(let i=0;i<hl.length-1;i++){
+    const y0=hl[i][1], y1=hl[i+1][0]; if(y1-y0<H*0.025 || y1-y0>H*0.25) continue;
+    const col=new Float32Array(W); for(let x=0;x<W;x++){ let n=0; for(let y=y0;y<y1;y++) if(g[y*W+x]<T) n++; col[x]=n/(y1-y0); }
+    const vl=runs(col,0.5); vl.unshift([0,0]); vl.push([W,W]);
+    for(let k=0;k<vl.length-1;k++){ const x0=vl[k][1], x1=vl[k+1][0]; if(x1-x0>=W*0.06) cells.push({x0,x1,y0,y1}); }
+  }
+  return cells;
+}
+async function ocrAmountTriple(blob){
+  const lib = await loadPdfJsLib();
+  const pdf = await lib.getDocument({ data: await blob.arrayBuffer() }).promise;
+  const worker = await getOcrWorker();
+  const votes = new Map();
+  try{
+    await worker.setParameters({ tessedit_char_whitelist:'0123456789,.', tessedit_pageseg_mode:'7' });
+    for(const pn of [1]){
+      if(pn>pdf.numPages) break;
+      const page = await pdf.getPage(pn);
+      for(const S of [3, 2.5, 3.5]){
+        const c0 = await _renderPageCanvas(page, S);
+        const rx = Math.round(c0.width*0.45), ry = Math.round(c0.height*0.78);
+        const reg = document.createElement('canvas'); reg.width=c0.width-rx; reg.height=c0.height-ry;
+        reg.getContext('2d').drawImage(c0, rx, ry, reg.width, reg.height, 0, 0, reg.width, reg.height);
+        const nums = [];
+        for(const cl of _ocrTableCells(reg)){
+          const m=6, w=cl.x1-cl.x0-2*m, h=cl.y1-cl.y0-2*m; if(w<20 || h<15) continue;
+          const c2=document.createElement('canvas'); c2.width=w; c2.height=h;
+          c2.getContext('2d').drawImage(reg, cl.x0+m, cl.y0+m, w, h, 0, 0, w, h);
+          const r = await worker.recognize(c2); nums.push(..._numsFromText(r.data.text));
+        }
+        const t = findSumTriple(nums);
+        if(t){ const k = t.total.toFixed(2)+'|'+t.parts.map(x=>x.toFixed(2)).join('+'); votes.set(k,(votes.get(k)||0)+1); if(votes.get(k)>=1) break; }
+      }
+    }
+  } finally { await worker.setParameters({ tessedit_char_whitelist:'', tessedit_pageseg_mode:'3' }); }
+  if(!votes.size) return null;
+  const [k] = [...votes.entries()].sort((a,b)=>b[1]-a[1])[0]; const [tot, parts] = k.split('|');
+  return { total: parseFloat(tot), parts: parts.split('+').map(parseFloat) };
+}
+
 const _rep = (v, n) => Array(n).fill(v);
+
+/* Ενσωματωμένο κείμενο PDF: χρησιμοποιείται ΜΟΝΟ αν είναι αξιόπιστο. Σαρωτές (π.χ. Adobe Scan) βάζουν «κρυφό OCR»
+   που συχνά είναι ακατάληπτο (ελληνικά γράμματα ως λατινικά: «KOINOXPHSTA», «NANAOANAEIOY»). Τότε το αγνοούμε και τρέχει OCR. */
+function textIsUsable(t){
+  const x = String(t||'');
+  if(x.replace(/\s+/g,'').length < 30) return false;
+  const greek = (x.match(/[\u0370-\u03FF\u1F00-\u1FFF]/g)||[]).length;
+  const latin = (x.match(/[A-Za-z]/g)||[]).length;
+  if(greek + latin >= 40 && greek / (greek + latin) < 0.15) return false;
+  return true;
+}
+/* Ειδοποιητήριο κοινοχρήστων: κάτω δεξιά «ΠΟΣΟ ΠΟΥ ΠΡΕΠΕΙ ΝΑ ΠΛΗΡΩΘΕΙ: ΕΝΟΙΚΟΣ · ΙΔΙΟΚΤΗΤΗΣ · ΣΥΝΟΛΟ» → τρία ποσά με x + y = z. Επιστρέφει z. */
+function koinoTotal(text){
+  const n = _issueNorm(text);
+  const AMT = /\d{1,3}(?:\.\d{3})*,\d{2}/g;
+  const pick = seg => {
+    const v = (seg.match(AMT)||[]).map(a=>parseGreekNumber(a)).filter(a=>a!==null);
+    for(let i=0;i+2<v.length;i++){ if(v[i+2]>0 && Math.abs(v[i]+v[i+1]-v[i+2])<0.015) return v[i+2]; }
+    return null;
+  };
+  const a = n.search(/ΠΡΕΠΕΙ\s?ΝΑ\s?ΠΛΗΡΩΘ|ΠΟΣΟ\s?ΠΟΥ\s?ΠΡΕΠΕΙ/);
+  if(a >= 0){ const r = pick(n.slice(a, a+260)); if(r!==null) return r; }
+  return null;
+}
+
 
 /* Κατάσταση πιστωτικής κάρτας (π.χ. Πειραιώς): οι τιμές της επικεφαλίδας εξάγονται από το PDF χωρίς τις ετικέτες τους,
    με σταθερή σειρά:  ημ/νία κατάστασης · προηγούμενη ημ/νία · προηγούμενο υπόλοιπο € · ΝΕΟ ΥΠΟΛΟΙΠΟ € · όριο € · ΗΜ/ΝΙΑ ΛΗΞΗΣ · ελάχιστο €
@@ -3640,9 +3736,9 @@ async function autoReadBill(bill, cur, opts={}){
   if(billBlob){
     log('Ανάγνωση λογαριασμού…');
     let emb = ''; try{ emb = await extractTextFromPdfBlob(billBlob); }catch(e){ console.warn('PDF text failed', e); }
-    if(emb.replace(/\s+/g,'').length < 30 && bill.textBill) emb = bill.textBill;   // αποθηκευμένο κείμενο του αρχικού PDF
-    if(emb.replace(/\s+/g,'').length >= 30){ bTexts = [emb]; }
-    else if(opts.allowOcr === false){ out.skippedOcr = true; }
+    if(!textIsUsable(emb) && bill.textBill && textIsUsable(bill.textBill)) emb = bill.textBill;   // αποθηκευμένο κείμενο του αρχικού PDF
+    if(textIsUsable(emb)){ bTexts = [emb]; }
+    else if(opts.allowOcr === false && emb.replace(/\s+/g,'').length < 30){ out.skippedOcr = true; }   // (κείμενο-σκουπίδι → OCR ακόμα και στην εισαγωγή)
     else {
       bOcr = true; out.usedOcr = true;
       const specs = {
@@ -3711,9 +3807,9 @@ async function autoReadBill(bill, cur, opts={}){
   if(recBlob){
     log('Ανάγνωση απόδειξης…');
     let emb = ''; try{ emb = await extractTextFromPdfBlob(recBlob); }catch(e){ console.warn('Receipt text failed', e); }
-    if(emb.replace(/\s+/g,'').length < 30 && bill.textPay) emb = bill.textPay;
-    if(emb.replace(/\s+/g,'').length >= 30){ rTexts = [emb]; }
-    else if(opts.allowOcr === false){ out.skippedOcr = true; }
+    if(!textIsUsable(emb) && bill.textPay && textIsUsable(bill.textPay)) emb = bill.textPay;
+    if(textIsUsable(emb)){ rTexts = [emb]; }
+    else if(opts.allowOcr === false && emb.replace(/\s+/g,'').length < 30){ out.skippedOcr = true; }
     else {
       rOcr = true; out.usedOcr = true;
       for(const [i,S] of [2,2.5,3].entries()){ log(`OCR απόδειξης (${i+1}/3)…`); rTexts.push(await ocrPdfBlob(recBlob, 2, S)); }
@@ -3732,7 +3828,7 @@ async function autoReadBill(bill, cur, opts={}){
   } else { F.paidDate = none; }
   // ποσό: από απόδειξη και λογαριασμό μαζί (η συμφωνία των δύο εγγράφων είναι ισχυρή επαλήθευση)
   const recAmts = recInfo.map((i,k)=>{ let a=i.amount; if(a===null && koin){ try{ a = extractCasaCareAmount(rTexts[k]); }catch(e){} } return a; });
-  const billAmts = bTexts.map(t=>{ try{ const c = koin ? null : cardStatementDates(t); return (koin && extractCasaCareAmount(t)) || (c && c.amount) || extractBillAmount(t); }catch(e){ return null; } });
+  const billAmts = bTexts.map(t=>{ try{ const c = koin ? null : cardStatementDates(t); return (koin && (koinoTotal(t) || extractCasaCareAmount(t))) || (c && c.amount) || extractBillAmount(t); }catch(e){ return null; } });
   const fmtA = a => (a!==null && a!==undefined) ? Number(a).toFixed(2) : null;
   const rv = voteValues(recAmts.flatMap(a=>_rep(fmtA(a), wr)));
   const bv = voteValues(billAmts.flatMap(a=>_rep(fmtA(a), wb)));
@@ -3741,6 +3837,14 @@ async function autoReadBill(bill, cur, opts={}){
     av = { value:rv.value, verified: rv.verified || (bv.value===rv.value) };
     if(bv.value && bv.value!==rv.value) out.notes.push(`Το ποσό της απόδειξης (${rv.value}) διαφέρει από το ποσό του λογαριασμού (${bv.value}) — χρησιμοποιήθηκε της απόδειξης.`);
   } else av = bv;
+  let triple = null;
+  if(bOcr && !rv.value && billBlob && (koin || !bv.value)){
+    try{ log('Ανάγνωση πίνακα ποσών…'); triple = await ocrAmountTriple(billBlob); }catch(e){ console.warn('Triple OCR failed', e); }
+    if(triple){
+      av = { value:triple.total.toFixed(2), verified:true };
+      out.notes.push(`Ποσό από πίνακα ειδοποιητηρίου: ${formatMoney(triple.parts[0])} + ${formatMoney(triple.parts[1])} = ${formatMoney(triple.total)} (έλεγχος αθροίσματος ✓). Αν πληρώνετε μόνο το μερίδιό σας, βάλτε το αντίστοιχο ποσό.`);
+    } else if(koin && bOcr){ av = { value:null, verified:false }; }      // σαρωμένο κοινόχρηστο χωρίς επαληθευμένο πίνακα: όχι τυχαίο νούμερο από θόρυβο OCR
+  }
   F.amount = av.value ? { value:parseFloat(av.value), verified:av.verified } : none;
   const recAgrees = recAmts.some(a=>a!==null && F.amount.value!==null && a.toFixed(2)===Number(F.amount.value).toFixed(2));
   F.status = (recBlob && ((F.paidDate.value && F.paidDate.verified) || (F.amount.value!==null && F.amount.verified && recAgrees)))
